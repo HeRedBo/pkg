@@ -21,6 +21,8 @@ const (
 	MaxRetries         = 3
 )
 
+var Ctx = context.Background()
+
 func setDefaultOptions(opt *redis.Options) {
 	if opt.DialTimeout == 0 {
 		opt.DialTimeout = 2 * time.Second
@@ -68,8 +70,7 @@ func initRedis(clientName string, opt *redis.Options) error {
 	setDefaultOptions(opt)
 
 	client := redis.NewClient(opt)
-	ctx := context.Background()
-	if err := client.Ping(ctx).Err(); err != nil {
+	if err := client.Ping(Ctx).Err(); err != nil {
 		return err
 	}
 
@@ -77,4 +78,80 @@ func initRedis(clientName string, opt *redis.Options) error {
 		client: client,
 	}
 	return nil
+}
+
+func InitClusterRedis(clientName string, opt *redis.ClusterOptions) error {
+	if len(clientName) == 0 {
+		return errors.New("empty client name")
+	}
+
+	if len(opt.Addrs) == 0 {
+		return errors.New("empty addr")
+	}
+
+	setDefaultClusterOptions(opt)
+
+	client := redis.NewClusterClient(opt)
+	if err := client.Ping(Ctx).Err(); err != nil {
+		return err
+	}
+
+	redisClients[clientName] = &Redis{
+		clusterClient: client,
+	}
+	return nil
+}
+
+func GetRedisClient(name string) *Redis {
+	if client, ok := redisClients[name]; ok {
+		return client
+	}
+	return nil
+}
+
+func GetRedisClusterClient(name string) *Redis {
+	if client, ok := redisClients[name]; ok {
+		return client
+	}
+	return nil
+}
+
+func (r *Redis) Set(key string, value interface{}, ttl time.Duration) error {
+	if len(key) == 0 {
+		return errors.New("emtpy key")
+	}
+	if r.client != nil {
+		if err := r.client.Set(Ctx, key, value, ttl).Err(); err != nil {
+			// TODO 返回错误信息优化
+			return err
+		}
+		return nil
+	}
+
+	// 集群版
+	if err := r.clusterClient.Set(Ctx, key, value, ttl).Err(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (r *Redis) Get(key string) interface{} {
+	if len(key) == 0 {
+		CacheStdLogger.Println("empty key")
+		return nil
+	}
+
+	if r.client != nil {
+		value, err := r.client.Get(Ctx, key).Result()
+		if err != nil && err != redis.Nil {
+			CacheStdLogger.Printf("redis get key: %s err %v", key, err)
+		}
+		return value
+	}
+
+	value, err := r.clusterClient.Get(Ctx, key).Result()
+	if err != nil && err != redis.Nil {
+		CacheStdLogger.Printf("redis get key: %s err %v", key, err)
+	}
+	return value
 }
