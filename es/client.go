@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"github.com/olivere/elastic"
+	"github.com/olivere/elastic/v7"
 	"log"
 	"net/http"
 	"os"
