@@ -30,7 +30,7 @@ type BulkCreateDoc struct {
 }
 
 type BulkUpsertDoc struct {
-	BulkDoc
+	BulkCreateDoc
 	update map[string]interface{}
 }
 
@@ -134,5 +134,119 @@ func (c *Client) Delete(ctx context.Context, indexName, id, routing string) erro
 }
 
 func (c *Client) DeleteRefresh(ctx context.Context, indexName, id, routing string) error {
-	
+	deleteService := c.Client.Delete().Index(indexName).Id(id).Refresh(RefreshTrue)
+	if len(routing) > 0 {
+		deleteService.Routing(routing)
+	}
+	_, err := deleteService.Do(ctx)
+	return err
+}
+
+func (c *Client) DeleteWithVersion(ctx context.Context, indexName, id, routing string, version int64) error {
+	deleteService := c.Client.Delete().Index(indexName).VersionType(DefaultVersionType).Version(version).
+		Refresh(DefaultRefresh).
+		Id(id)
+	if len(routing) > 0 {
+		deleteService.Routing(routing)
+	}
+	_, err := deleteService.Do(ctx)
+	return err
+}
+
+func (c *Client) DeleteByQuery(ctx context.Context, indexName, id, routing string, query elastic.Query) error {
+	deleteService := c.Client.DeleteByQuery(indexName).Query(query).ProceedOnVersionConflict().
+		Refresh(DefaultRefresh)
+	if len(routing) > 0 {
+		deleteService.Routing(routing)
+	}
+	_, err := deleteService.Do(ctx)
+	return err
+}
+
+func (c *Client) BulkDelete(indexName, id, routing string) {
+	bulkDeleteRequest := elastic.NewBulkDeleteRequest().Index(indexName).Id(id)
+	if len(routing) > 0 {
+		bulkDeleteRequest.Id(routing)
+	}
+	c.BulkProcessor.Add(bulkDeleteRequest)
+}
+
+func (c *Client) BulkDeleteWithVersion(indexName, id, routing string, verion int64) {
+	bulkDeleteRequest := elastic.NewBulkDeleteRequest().Index(indexName).
+		Id(id).VersionType(DefaultVersionType).Version(verion)
+	if len(routing) > 0 {
+		bulkDeleteRequest.Id(routing)
+	}
+	c.BulkProcessor.Add(bulkDeleteRequest)
+}
+
+func (c *Client) Update(ctx context.Context, indexName, id, routing string, update map[string]interface{}) error {
+	updateService := c.Client.Update().Index(indexName).Id(id).Refresh(DefaultRefresh)
+	if len(routing) > 0 {
+		updateService.Routing(routing)
+	}
+	_, err := updateService.Doc(update).Do(ctx)
+	return err
+}
+
+func (c *Client) UpdateByQuery(ctx context.Context, indexName string, routings []string, query elastic.Query, script string, scriptParams map[string]interface{}) (*elastic.BulkIndexByScrollResponse, error) {
+	updateByQueryService := c.Client.UpdateByQuery(indexName).Query(query).Script(elastic.NewScript(script).
+		Params(scriptParams).Lang(DefaultScriptLang)).
+		Refresh(DefaultRefresh).ProceedOnVersionConflict()
+	if len(routings) > 0 {
+		updateByQueryService.Routing(routings...)
+	}
+	return updateByQueryService.Do(ctx)
+}
+
+func (c *Client) BulkUpdataeDocs(ctx context.Context, index string, updates []*BulkUpdateDoc) (*elastic.BulkResponse, error) {
+	bulkService := c.Client.Bulk().ErrorTrace(true).Refresh(DefaultRefresh)
+	for _, update := range updates {
+		doc := elastic.NewBulkUpdateRequest().Id(update.ID).Doc(update.update)
+		if len(update.Routing) > 0 {
+			doc.Routing(update.Routing)
+		}
+		bulkService.Add(doc)
+	}
+	return bulkService.Do(ctx)
+}
+
+func (c *Client) UpdateWithVersion(ctx context.Context, indexName, id, routing string, doc interface{}, version int64) error {
+	indexService := c.Client.Index().OpType("index").Index(indexName).Id(id).Refresh(DefaultRefresh).
+		Version(version).VersionType(DefaultVersionType)
+	if len(routing) > 0 {
+		indexService.Routing(routing)
+	}
+	_, err := indexService.BodyJson(doc).Do(ctx)
+	return err
+}
+
+// Upsert 不存在就插入
+func (c *Client) Upsert(ctx context.Context, indexName, id, routing string, update map[string]interface{}, doc interface{}) error {
+	updateService := c.Client.Update().Index(indexName).Id(id).Refresh(DefaultRefresh).DocAsUpsert(true)
+	if len(routing) > 0 {
+		updateService.Routing(routing)
+	}
+	_, err := updateService.Doc(update).Upsert(doc).Do(ctx)
+	return err
+}
+
+func (c *Client) BulkUpsert(indexName, id, routing string, update map[string]interface{}, doc interface{}) {
+	bulkUpdateRequest := elastic.NewBulkUpdateRequest().Index(indexName).Doc(update).Id(id).Upsert(doc).DocAsUpsert(true)
+	if len(routing) > 0 {
+		bulkUpdateRequest.Routing(routing)
+	}
+	c.BulkProcessor.Add(bulkUpdateRequest)
+}
+
+func (c *Client) BulkUpsertDocs(ctx context.Context, index string, docs []*BulkUpsertDoc) (*elastic.BulkResponse, error) {
+	bulkService := c.Client.Bulk().ErrorTrace(true).Refresh(DefaultRefresh)
+	for _, doc := range docs {
+		index := elastic.NewBulkUpdateRequest().Id(doc.ID).Doc(doc.update).Upsert(doc.Doc).DocAsUpsert(true)
+		if len(doc.Routing) > 0 {
+			index.Routing(doc.Routing)
+		}
+		bulkService.Add(index)
+	}
+	return bulkService.Do(ctx)
 }
