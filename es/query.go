@@ -2,6 +2,8 @@ package es
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 
 	"github.com/olivere/elastic/v7"
 )
@@ -17,7 +19,7 @@ type queryOption struct {
 	Orders               []map[string]bool
 	Highlight            *elastic.Highlight
 	Profile              bool
-	EnableDSL            []string
+	EnableDSL            bool
 	ExcludeFiles         []string
 	IncludeFileds        []string
 	SlowQueryMillisecond int64
@@ -107,4 +109,66 @@ func (c *Client) Mget(ctx context.Context, mgetItems []Mget) (*elastic.MgetRespo
 		mulitiGetItems = append(mulitiGetItems, multiGetItem)
 	}
 	return multiGetService.Add(mulitiGetItems...).Do(ctx)
+}
+
+func (c *Client) Query(ctx context.Context, indexName string, routings []string, query elastic.Query, from, size int, options ...QueryOption) (*elastic.SearchResult, error) {
+	queryOpt := &queryOption{}
+	for _, f := range options {
+		if f != nil {
+			f(queryOpt)
+		}
+	}
+	// 设置Source
+	fetchSource := true
+	if queryOpt.FetchSource != nil && !*queryOpt.FetchSource {
+		fetchSource = false
+	}
+
+	fetchSourceContext := elastic.NewFetchSourceContext(fetchSource)
+	if len(queryOpt.IncludeFileds) > 0 {
+		fetchSourceContext.Include(queryOpt.IncludeFileds...)
+	}
+	if len(queryOpt.ExcludeFiles) > 0 {
+		fetchSourceContext.Exclude(queryOpt.ExcludeFiles...)
+	}
+
+	// 构造查询条件
+	searchSource := elastic.NewSearchSource()
+	searchSource = searchSource.FetchSourceContext(fetchSourceContext).Query(query).From(from).Size(size)
+	if len(queryOpt.Orders) > 0 {
+		for _, orderM := range queryOpt.Orders {
+			for field, order := range orderM {
+				searchSource.Sort(field, order)
+			}
+		}
+	}
+
+	if queryOpt.Highlight != nil {
+		searchSource.Highlight(queryOpt.Highlight)
+	}
+
+	searchSource.Profile(queryOpt.Profile)
+
+	searchService := c.Client.Search(indexName).SearchSource(searchSource).IgnoreUnavailable(true).Preference(DefaultPreference)
+	if len(routings) > 0 {
+		searchService.Routing(routings...)
+	}
+	if len(queryOpt.Preference) > 0 {
+		searchService.Preference(queryOpt.Preference)
+	} else {
+		searchService.Preference(DefaultPreference)
+	}
+
+	res, err := searchService.Do(ctx)
+	src, _ := searchSource.Source()
+	data, _ := json.Marshal(src)
+	rs := strings.Join(routings, ",")
+	if c.DebugMode || c.QueryLogEnable || queryOpt.EnableDSL {
+		EStdLogger.Print("DSL : ", string(data), "routing: ", rs)
+	}
+
+	if queryOpt.SlowQueryMillisecond > 0 && res != nil && res.TookInMillis >= queryOpt.SlowQueryMillisecond {
+		EStdLogger.Print("slow query DSL: ", string(data), "routing: ", rs)
+	}
+	return res, err
 }
