@@ -3,6 +3,7 @@ package es
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 
 	"github.com/olivere/elastic/v7"
@@ -171,4 +172,80 @@ func (c *Client) Query(ctx context.Context, indexName string, routings []string,
 		EStdLogger.Print("slow query DSL: ", string(data), "routing: ", rs)
 	}
 	return res, err
+}
+
+func (c *Client) scrollQuery(ctx context.Context, index []string, typeStr string, query elastic.Query, size int, routings []string, callback func(res *elastic.SearchResult, err error), options ...QueryOption) {
+	queryOpt := &queryOption{}
+	for _, f := range options {
+		if f != nil {
+			f(queryOpt)
+		}
+	}
+	// 设置Source
+	fetchSource := true
+	if queryOpt.FetchSource != nil && !*queryOpt.FetchSource {
+		fetchSource = false
+	}
+
+	fetchSourceContext := elastic.NewFetchSourceContext(fetchSource)
+	// 构造查询条件
+	searchSource := elastic.NewSearchSource()
+	searchSource = searchSource.FetchSourceContext(fetchSourceContext).Query(query)
+	if len(queryOpt.Orders) > 0 {
+		for _, orderM := range queryOpt.Orders {
+			for field, order := range orderM {
+				searchSource.Sort(field, order)
+			}
+		}
+	}
+
+	if queryOpt.Highlight != nil {
+		searchSource.Highlight(queryOpt.Highlight)
+	}
+	searchSource.Profile(queryOpt.Profile)
+
+	src, _ := searchSource.Source()
+	data, _ := json.Marshal(src)
+	rs := strings.Join(routings, ",")
+	if c.DebugMode || c.QueryLogEnable || queryOpt.EnableDSL {
+		EStdLogger.Print("DSL : ", string(data), "routing: ", rs)
+	}
+
+	scrollService := c.Client.Scroll(index...).SearchSource(searchSource).Size(size).Preference(DefaultPreference)
+	if len(routings) > 0 {
+		scrollService.Routing(routings...)
+	}
+	if len(queryOpt.Preference) > 0 {
+		scrollService.Preference(queryOpt.Preference)
+	} else {
+		scrollService.Preference(DefaultPreference)
+	}
+	//scroll保存在ES集群中的上下文信息会占用大量内存资源，虽然会在一段时间后自动清理，当我们知道scroll结束后,
+	//需要手动调用clear释放资源
+	defer scrollService.Clear(ctx)
+
+	for {
+		res, err := scrollService.Do(ctx)
+		if err != io.EOF {
+			break
+		}
+		if queryOpt.SlowQueryMillisecond > 0 && res != nil && res.TookInMillis >= queryOpt.SlowQueryMillisecond {
+			EStdLogger.Print("slow query DSL: ", string(data), "routing: ", rs)
+		}
+
+		if res == nil {
+			EStdLogger.Print("nil result !")
+			break
+		}
+
+		if res.Hits == nil {
+			EStdLogger.Print("expected results.Hits != nil; got nil")
+		}
+
+		if len(res.Hits.Hits) == 0 {
+			break
+		}
+		callback(res, err)
+	}
+
 }
