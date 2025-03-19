@@ -1,14 +1,15 @@
 package main
 
 import (
-	"github.com/gookit/goutil/dump"
-	"go.uber.org/zap"
 	"pkg/db"
 	"time"
+
+	"github.com/gookit/goutil/dump"
+	"go.uber.org/zap"
 )
 
 func initMysql() {
-	err := db.InitMysqlClient(db.DefaultClient, "root", "root", "localhost:3306", "demo")
+	err := db.InitMysqlClient(db.DefaultClient, "root", "admin123", "localhost:3306", "demo")
 	if err != nil {
 		db.MysqltdLogger.Print("InitMysqlClient client error" + db.DefaultClient)
 		return
@@ -64,15 +65,16 @@ func main() {
 		Password:      "",
 		RememberToken: "",
 	}
-	//if err := ormDB.Create(&user).Error; err != nil {
-	//	//db.MysqltdLogger.Print("insert error", zap.Any("user", user))
-	//	dump.Print("insert error", zap.Any("user", user))
-	//}
+	// if err := ormDB.Create(&user).Error; err != nil {
+	// 	//db.MysqltdLogger.Print("insert error", zap.Any("user", user))
+	// 	dump.Print("insert error", zap.Any("user", user))
+	// }
 
 	// 指定字段创建
-	//if err := ormDB.Select("email").Create(&user).Error; err != nil {
-	//	db.MysqltdLogger.Print("insert error", zap.Any("user", user))
-	//}
+	if err := ormDB.Select("email").Create(&user).Error; err != nil {
+		db.MysqltdLogger.Print("insert error", zap.Any("user", user))
+	}
+	return
 
 	//var users = []User{{Name: "user1", Email: "u1"}, {Name: "user2", Email: "u2"}, {Name: "user3", Email: "u3"}}
 	//if err := ormDB.Create(&users).Error; err != nil {
