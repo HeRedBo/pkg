@@ -34,7 +34,7 @@ type BulkCfg struct {
 	Workers       int
 	FlushInterval time.Duration
 	ActionSize    int // 每批提交的文档数
-	RequestSizse  int // 每批提交的文档大小
+	RequestSize   int // 每批提交的文档大小
 	AfterFunc     elastic.BulkAfterFunc
 	Ctx           context.Context
 }
@@ -43,7 +43,7 @@ type BulkCfg struct {
 const (
 	DefaultClient      = "es-default-client"
 	DefaultReadClient  = "es-default-read-client"
-	DefaultWriteClinet = "es-default-write-client"
+	DefaultWriteClient = "es-default-write-client"
 )
 
 func InitClient(clientName string, addr []string, username, password string) error {
@@ -198,8 +198,8 @@ func CloseAll() {
 }
 
 func GetClient(name string) *Client {
-	if clinet, exist := clients[name]; exist {
-		return clinet
+	if client, exist := clients[name]; exist {
+		return client
 	}
 	log.Print("call init", name, "before !!!")
 	return nil
