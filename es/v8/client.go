@@ -162,7 +162,7 @@ func InitClientWithCfg(clientName string, cfg elasticsearch.Config, queryLogEnab
 	bi, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
 		Client:        esBulkClient,
 		NumWorkers:    bulk.Workers,
-		FlushBytes:    bulk.RequestSizse,
+		FlushBytes:    bulk.RequestSize,
 		FlushInterval: bulk.FlushInterval,
 		ErrorTrace:    true,
 		OnError: func(ctc context.Context, err error) {
