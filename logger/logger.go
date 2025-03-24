@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	// DefaultLevel the defaul log lebel
+	// DefaultLevel the default log level
 	DefaultLevel = zapcore.InfoLevel
 	// DefaultTimeLayout the default time layout
 	DefaultTimeLayout = time.RFC3339
@@ -21,37 +21,37 @@ const (
 type Option func(*option)
 
 type option struct {
-	level         zapcore.Level
-	fields        map[string]string
-	file          io.Writer
-	timeLayout    string
-	diableConsole bool
+	level          zapcore.Level
+	fields         map[string]string
+	file           io.Writer
+	timeLayout     string
+	disableConsole bool
 }
 
 var Logger *zap.Logger
 
-// WithDebugLevel only greater than 'level' will ouput
+// WithDebugLevel only greater than 'level' will output
 func WithDebugLevel() Option {
 	return func(opt *option) {
 		opt.level = zapcore.DebugLevel
 	}
 }
 
-// WithInfoLevel only greater than 'level' will ouput
+// WithInfoLevel only greater than 'level' will output
 func WithInfoLevel() Option {
 	return func(opt *option) {
 		opt.level = zapcore.InfoLevel
 	}
 }
 
-// WithWarnLevel only greater than 'level' will ouput
+// WithWarnLevel only greater than 'level' will output
 func WithWarnLevel() Option {
 	return func(opt *option) {
 		opt.level = zapcore.WarnLevel
 	}
 }
 
-// WithErrorLevel only greater than 'level' will ouput
+// WithErrorLevel only greater than 'level' will output
 func WithErrorLevel() Option {
 	return func(opt *option) {
 		opt.level = zapcore.ErrorLevel
@@ -87,7 +87,7 @@ func WithFileRotationP(file string) Option {
 		panic(err)
 	}
 	return func(opt *option) {
-		opt.file = &lumberjack.Logger{ // concurrent-safed
+		opt.file = &lumberjack.Logger{ // concurrent-saved
 			Filename:   file, // 文件路径
 			MaxSize:    128,  // 当个文件最大尺寸， 默认档位是 M
 			MaxBackups: 300,  // 最多保留 300 个备份
@@ -98,22 +98,22 @@ func WithFileRotationP(file string) Option {
 	}
 }
 
-// WithTimeLayout cunstom time format
-func WithTimeLayout(timelayout string) Option {
+// WithTimeLayout custom time format
+func WithTimeLayout(timeLayout string) Option {
 	return func(opt *option) {
-		opt.timeLayout = timelayout
+		opt.timeLayout = timeLayout
 	}
 }
 
-// WithDiableConsole  WithEnableConsole write log to os.Stdout or os.Stderr
-func WithDiableConsole() Option {
+// WithDisableConsole  WithEnableConsole write log to os.Stdout or os.Stderr
+func WithDisableConsole() Option {
 	return func(opt *option) {
-		opt.diableConsole = true
+		opt.disableConsole = true
 	}
 }
 
-// InitLollger
-func InitLollger(opts ...Option) *zap.Logger {
+// InitLogger
+func InitLogger(opts ...Option) *zap.Logger {
 	opt := &option{level: DefaultLevel, fields: make(map[string]string)}
 	// 写法待理解
 	for _, f := range opts {
@@ -156,7 +156,7 @@ func InitLollger(opts ...Option) *zap.Logger {
 
 	core := zapcore.NewTee()
 	encoder := zapcore.NewJSONEncoder(encoderConfig)
-	if !opt.diableConsole {
+	if !opt.disableConsole {
 		encoder = zapcore.NewConsoleEncoder(encoderConfig)
 	}
 
@@ -224,7 +224,10 @@ func Error(msg string, fields ...zap.Field) {
 }
 
 func Sync() {
-	Logger.Sync()
+	err := Logger.Sync()
+	if err != nil {
+		return
+	}
 }
 
 type Meta interface {
