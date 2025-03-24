@@ -6,7 +6,13 @@ import (
 	"errors"
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/elastic/go-elasticsearch/v8/esutil"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/delete"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/deletebyquery"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/index"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/update"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/updatebyquery"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/conflicts"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/optype"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/refresh"
 	"strings"
@@ -124,4 +130,85 @@ func (c *Client) BulkInsertWithSeqNo(ctx context.Context, id, routing, indexName
 	bulkIndexerItem.Body = strings.NewReader(jsonDoc)
 	bulkIndexerItem.OnFailure = onFailure
 	return c.BulkProcessor.Add(ctx, bulkIndexerItem)
+}
+
+func (c *Client) Delete(ctx context.Context, indexName, id, routing string) (*delete.Response, error) {
+	if len(id) == 0 {
+		return nil, errors.New("_doc id is required")
+	}
+	deleteService := c.Client.Delete(indexName, id)
+	if len(routing) > 0 {
+		deleteService.Routing(routing)
+	}
+	return deleteService.Do(ctx)
+}
+
+func (c *Client) DeleteWithSeqNo(ctx context.Context, indexName, id, routing, seqNo, primaryTrem string) (*delete.Response, error) {
+	deleteService := c.Client.Delete(indexName, id).IfSeqNo(seqNo).IfPrimaryTerm(primaryTrem)
+	if len(routing) > 0 {
+		deleteService.Routing(routing)
+	}
+	return deleteService.Do(ctx)
+}
+
+func (c *Client) DeleteByQuery(ctx context.Context, indexName, routing, preference string, query *types.Query) (*deletebyquery.Response, error) {
+	deleteService := c.Client.DeleteByQuery(indexName).Conflicts(conflicts.Proceed)
+	if len(routing) > 0 {
+		deleteService.Routing(routing)
+	}
+	if len(preference) > 0 {
+		deleteService.Preference(preference)
+	}
+	return deleteService.Query(query).Do(ctx)
+}
+
+func (c *Client) BulkDelte(ctx context.Context, indexName, id, routing string, onFailure BulkIndexerOnFailure) error {
+	if len(id) == 0 {
+		return errors.New("_doc is required")
+	}
+	bulkIndexerItem := esutil.BulkIndexerItem{}
+	bulkIndexerItem.Index = indexName
+	if len(id) > 0 {
+		bulkIndexerItem.DocumentID = id
+	}
+	if len(routing) > 0 {
+		bulkIndexerItem.Routing = routing
+	}
+	bulkIndexerItem.Action = OpTypeDelete
+	bulkIndexerItem.RetryOnConflict = esapi.IntPtr(3)
+	bulkIndexerItem.OnFailure = onFailure
+	return c.BulkProcessor.Add(ctx, bulkIndexerItem)
+}
+
+func (c *Client) Update(ctx context.Context, indexName, id, routing string, update map[string]interface{}) (*update.Response, error) {
+	if len(id) == 0 {
+		return nil, errors.New("_doc is required")
+	}
+	updateService := c.Client.Update(indexName, id)
+	if len(routing) > 0 {
+		updateService.Routing(routing)
+	}
+	return updateService.Doc(update).Do(ctx)
+}
+
+func (c *Client) Upsert(ctx context.Context, indexName, id, routing string, update map[string]interface{}, upsertDoc interface{}) (*update.Response, error) {
+	if len(id) == 0 {
+		return nil, errors.New("_doc is required")
+	}
+	upsertService := c.Client.Update(indexName, id).Upsert(upsertDoc)
+	if len(routing) > 0 {
+		upsertService.Routing(routing)
+	}
+	return upsertService.Doc(update).Do(ctx)
+}
+
+func (c *Client) UpdateByQuery(ctx context.Context, indexName, routing, preference string, query *types.Query, script *types.Script) (*updatebyquery.Response, error) {
+	updateService := c.Client.UpdateByQuery(indexName).Conflicts(conflicts.Abort).Script(script)
+	if len(routing) > 0 {
+		updateService.Routing(routing)
+	}
+	if len(preference) > 0 {
+		updateService.Preference(preference)
+	}
+	return updateService.Query(query).Do(ctx)
 }

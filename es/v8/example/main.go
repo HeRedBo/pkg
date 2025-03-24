@@ -42,7 +42,7 @@ func main() {
 
 	indexName := "user"
 	ctx := context.Background()
-	err := v8.InitClient(v8.DefaultClient, []string{"https://127.0.0.1:9200"}, "elastic", "elastic")
+	err := v8.InitClient(v8.DefaultClient, []string{"http://127.0.0.1:9200"}, "elastic", "elastic")
 	if err != nil {
 		log.Println(err)
 		return
