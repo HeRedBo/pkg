@@ -2,6 +2,7 @@ package v8
 
 import (
 	"context"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/indices/delete"
 	"strings"
 )
 
@@ -42,4 +43,9 @@ func (c *Client) CreateIndex(ctx context.Context, indexName string, bodyJson str
 	}
 	c.CacheIndices.Store(indexName, true)
 	return nil
+}
+
+func (c *Client) DeleteIndex(ctx context.Context, indexName string) (*delete.Response, error) {
+	return c.Client.Indices.Delete(indexName).Do(ctx)
+
 }

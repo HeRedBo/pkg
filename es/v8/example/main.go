@@ -51,9 +51,16 @@ func main() {
 	esClient := v8.GetClient(v8.DefaultClient)
 
 	// create index
-	err = esClient.CreateIndex(ctx, indexName, indexCreateJson, true)
+	//err = esClient.CreateIndex(ctx, indexName, indexCreateJson, true)
+	//if err != nil {
+	//	dump.Println(err)
+	//}
+
+	// delete index
+	res, err := esClient.DeleteIndex(ctx, indexName)
 	if err != nil {
-		dump.Println(err)
+		dump.Println(res, err)
+		return
 	}
 
 }

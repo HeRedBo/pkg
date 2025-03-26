@@ -125,7 +125,7 @@ func getBaseCfg(username, password string, addr []string) elasticsearch.Config {
 	return cfg
 }
 
-func getDefaultClient() *http.Client {
+func GetDefaultClient() *http.Client {
 	tr := &http.Transport{
 		DisableKeepAlives: true,
 		TLSClientConfig:   &tls.Config{InsecureSkipVerify: true},

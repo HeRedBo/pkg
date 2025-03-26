@@ -22,7 +22,7 @@ type queryOption struct {
 	Profile              bool
 	EnableDSL            bool
 	ExcludeFiles         []string
-	IncludeFileds        []string
+	IncludeFields        []string
 	SlowQueryMillisecond int64
 	Preference           string
 	FetchSource          *bool
@@ -62,9 +62,9 @@ func WithExcludeFiles(excludeFiles []string) QueryOption {
 	}
 }
 
-func WithIncludeFileds(includeFileds []string) QueryOption {
+func WithIncludeFields(includeFields []string) QueryOption {
 	return func(opt *queryOption) {
-		opt.IncludeFileds = includeFileds
+		opt.IncludeFields = includeFields
 	}
 }
 
@@ -86,20 +86,20 @@ func WithFetchSource(fetchSource *bool) QueryOption {
 	}
 }
 
-func (c *Client) Get(ctx context.Context, indexName, id, rouring string) (*elastic.GetResult, error) {
+func (c *Client) Get(ctx context.Context, indexName, id, routing string) (*elastic.GetResult, error) {
 	//由于副本分片也能提供数据查询，所以当查询请求能从本地分片获取数据时，就不需要转发到其他节点获取数据了，
 	//这样可以提高查询缓存命中率，减少跨节点的查询请求，
 	//sdk的默认策略是随机获取
 	getService := c.Client.Get().Index(indexName).Id(id).Preference(DefaultPreference)
-	if len(rouring) > 0 {
-		getService.Routing(rouring)
+	if len(routing) > 0 {
+		getService.Routing(routing)
 	}
 	return getService.Do(ctx)
 }
 
 func (c *Client) Mget(ctx context.Context, mgetItems []Mget) (*elastic.MgetResponse, error) {
 	multiGetService := c.Client.Mget().Preference(DefaultPreference)
-	mulitiGetItems := make([]*elastic.MultiGetItem, 0)
+	multiGetItems := make([]*elastic.MultiGetItem, 0)
 	for _, item := range mgetItems {
 		multiGetItem := &elastic.MultiGetItem{}
 		multiGetItem.Index(item.Index)
@@ -107,9 +107,9 @@ func (c *Client) Mget(ctx context.Context, mgetItems []Mget) (*elastic.MgetRespo
 		if len(item.Routing) > 0 {
 			multiGetItem.Routing(item.Routing)
 		}
-		mulitiGetItems = append(mulitiGetItems, multiGetItem)
+		multiGetItems = append(multiGetItems, multiGetItem)
 	}
-	return multiGetService.Add(mulitiGetItems...).Do(ctx)
+	return multiGetService.Add(multiGetItems...).Do(ctx)
 }
 
 func (c *Client) Query(ctx context.Context, indexName string, routings []string, query elastic.Query, from, size int, options ...QueryOption) (*elastic.SearchResult, error) {
@@ -126,8 +126,8 @@ func (c *Client) Query(ctx context.Context, indexName string, routings []string,
 	}
 
 	fetchSourceContext := elastic.NewFetchSourceContext(fetchSource)
-	if len(queryOpt.IncludeFileds) > 0 {
-		fetchSourceContext.Include(queryOpt.IncludeFileds...)
+	if len(queryOpt.IncludeFields) > 0 {
+		fetchSourceContext.Include(queryOpt.IncludeFields...)
 	}
 	if len(queryOpt.ExcludeFiles) > 0 {
 		fetchSourceContext.Exclude(queryOpt.ExcludeFiles...)
@@ -174,7 +174,7 @@ func (c *Client) Query(ctx context.Context, indexName string, routings []string,
 	return res, err
 }
 
-func (c *Client) scrollQuery(ctx context.Context, index []string, typeStr string, query elastic.Query, size int, routings []string, callback func(res *elastic.SearchResult, err error), options ...QueryOption) {
+func (c *Client) ScrollQuery(ctx context.Context, index []string, typeStr string, query elastic.Query, size int, routings []string, callback func(res *elastic.SearchResult, err error), options ...QueryOption) {
 	queryOpt := &queryOption{}
 	for _, f := range options {
 		if f != nil {

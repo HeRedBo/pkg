@@ -3,13 +3,14 @@ package v8
 import (
 	"context"
 	"errors"
+	"log"
+	"time"
+
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/get"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/mget"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/scroll"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/search"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
-	"log"
-	"time"
 )
 
 type Mget struct {
@@ -26,7 +27,7 @@ type queryOption struct {
 	EnableDSL            bool
 	FetchSource          *bool
 	ExcludeFiles         []string
-	IncludeFileds        []string
+	IncludeFields        []string
 	SlowQueryMillisecond int64
 	Preference           string
 	Analyzer             string
@@ -66,9 +67,9 @@ func WithExcludeFiles(excludeFiles []string) QueryOption {
 	}
 }
 
-func WithIncludeFileds(includeFileds []string) QueryOption {
+func WithIncludeFileds(includeFields []string) QueryOption {
 	return func(opt *queryOption) {
-		opt.IncludeFileds = includeFileds
+		opt.IncludeFields = includeFields
 	}
 }
 
@@ -95,7 +96,7 @@ func WithAnalyzer(analyzer string) QueryOption {
 	}
 }
 
-func (c *Client) Get(ctx context.Context, indexName, id, rouring string, preference string, excludes []string) (*get.Response, error) {
+func (c *Client) Get(ctx context.Context, indexName, id, routing string, preference string, excludes []string) (*get.Response, error) {
 	//由于副本分片也能提供数据查询，所以当查询请求能从本地分片获取数据时，就不需要转发到其他节点获取数据了，
 	//这样可以提高查询缓存命中率，减少跨节点的查询请求，
 	//sdk的默认策略是随机获取
@@ -103,8 +104,8 @@ func (c *Client) Get(ctx context.Context, indexName, id, rouring string, prefere
 		return nil, errors.New("_doc is required")
 	}
 	getService := c.Client.Get(indexName, id)
-	if len(rouring) > 0 {
-		getService.Routing(rouring)
+	if len(routing) > 0 {
+		getService.Routing(routing)
 	}
 	if len(preference) > 0 {
 		getService.Preference(preference)
@@ -156,8 +157,8 @@ func (c *Client) Query(ctx context.Context, indexName string, routing string, qu
 		searchService.Analyzer(queryOpt.Analyzer)
 	}
 
-	if len(queryOpt.IncludeFileds) > 0 {
-		searchService.SourceExcludes_(queryOpt.IncludeFileds...)
+	if len(queryOpt.IncludeFields) > 0 {
+		searchService.SourceExcludes_(queryOpt.IncludeFields...)
 	}
 	if len(queryOpt.ExcludeFiles) > 0 {
 		searchService.SourceExcludes_(queryOpt.ExcludeFiles...)
@@ -217,8 +218,8 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 		searchService.Analyzer(queryOpt.Analyzer)
 	}
 
-	if len(queryOpt.IncludeFileds) > 0 {
-		searchService.SourceExcludes_(queryOpt.IncludeFileds...)
+	if len(queryOpt.IncludeFields) > 0 {
+		searchService.SourceExcludes_(queryOpt.IncludeFields...)
 	}
 	if len(queryOpt.ExcludeFiles) > 0 {
 		searchService.SourceExcludes_(queryOpt.ExcludeFiles...)
