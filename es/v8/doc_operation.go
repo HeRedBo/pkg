@@ -107,7 +107,7 @@ func (c *Client) BulkUpdate(ctx context.Context, indexName, id, routing string, 
 	if len(routing) > 0 {
 		bulkIndexerItem.Routing = routing
 	}
-	bulkIndexerItem.Action = OpTypeIndex
+	bulkIndexerItem.Action = OpTypeUpdate
 	bulkIndexerItem.RetryOnConflict = esapi.IntPtr(3)
 	bulkIndexerItem.OnFailure = onFailure
 	return c.BulkProcessor.Add(ctx, bulkIndexerItem)
