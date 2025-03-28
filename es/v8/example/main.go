@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/core/scroll"
+	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/gookit/goutil/dump"
 	"log"
 	v8 "pkg/es/v8"
@@ -54,7 +57,6 @@ func main() {
 	}
 
 	esClient := v8.GetClient(v8.DefaultClient)
-	dump.Println(esClient)
 
 	// create index
 	//err = esClient.CreateIndex(ctx, indexName, indexCreateJson, true)
@@ -131,16 +133,27 @@ func main() {
 	//err = esClient.Close(ctx)
 	//stats := esClient.BulkProcessor.Stats()
 	//log.Printf("已提交: %d, 失败: %d", stats.NumAdded, stats.NumFailed)
-
+	//
 	//query := &types.Query{
 	//	Term: map[string]types.TermQuery{
-	//		"age": {Value: 40},
+	//		"age": {Value: 30},
 	//	},
 	//}
 	//script := map[string]interface{}{
 	//	"inline": "ctx._source.name = params.name",
 	//	"params": map[string]interface{}{
 	//		"name": "update-by-script",
+	//	},
+	//}
+
+	// 2. 定义脚本（使用 types.Script 结构体）
+	//scriptSource := "ctx._source.name = params.name"
+	//script := &types.Script{
+	//	Source: &scriptSource, // 关键字段是 Source（不是 Inline）
+	//	Params: map[string]json.RawMessage{
+	//		"name": json.RawMessage(`"update-by-script"`), // 直接传递 JSON 字符串的字节
+	//		// 复杂参数示例：
+	//		//"metadata": json.RawMessage(`{"priority": 5, "author": "Alice"}`),
 	//	},
 	//}
 	//res, err := esClient.UpdateByQuery(ctx, indexName, "2", "2", query, script)
@@ -154,14 +167,14 @@ func main() {
 	//		Must: []types.Query{
 	//			{
 	//				Term: map[string]types.TermQuery{
-	//					"age": {Value: 40},
+	//					"age": {Value: 25},
 	//				},
 	//			},
-	//			{
-	//				MatchPhrase: map[string]types.MatchPhraseQuery{
-	//					"name": {Query: "jack"},
-	//				},
-	//			},
+	//			//{
+	//			//	MatchPhrase: map[string]types.MatchPhraseQuery{
+	//			//		"name": {Query: "jerry"},
+	//			//	},
+	//			//},
 	//		},
 	//	},
 	//}
@@ -172,10 +185,22 @@ func main() {
 	//	log.Println(err)
 	//	return
 	//}
-
-	//query := &types.Query{
-	//	MatchAll: &types.MatchAllQuery{},
+	//
+	//log.Println(res.Hits.Total.Value)
+	//for _, hit := range res.Hits.Hits {
+	//	user := User{}
+	//	err = json.Unmarshal(hit.Source_, &user)
+	//	if err != nil {
+	//		log.Println(err)
+	//		return
+	//	}
+	//	dump.Println(user)
+	//	//log.Println(user)
 	//}
+
+	query := &types.Query{
+		MatchAll: &types.MatchAllQuery{},
+	}
 
 	//query := &types.Query{
 	//	Term: map[string]types.TermQuery{
@@ -183,25 +208,27 @@ func main() {
 	//	},
 	//}
 
-	//err = esClient.ScrollQuery(ctx, indexName, "", query, 2, func(res *scroll.Response, err error) {
-	//	if err != nil {
-	//		log.Println(err)
-	//		return
-	//	}
-	//	log.Println(res.Hits.Total.Value)
-	//	for _, hit := range res.Hits.Hits {
-	//		user := User{}
-	//		err = json.Unmarshal(hit.Source_, &user)
-	//		if err != nil {
-	//			log.Println(err)
-	//			return
-	//		}
-	//		log.Println(user)
-	//	}
-	//})
-	//if err != nil {
-	//	log.Println(err)
-	//}
+	err = esClient.ScrollQuery(ctx, indexName, "", query, 2, func(res *scroll.Response, err error) {
+		if err != nil {
+			log.Println(err)
+			return
+		}
+		log.Println(res.Hits.Total.Value)
+		for _, hit := range res.Hits.Hits {
+			user := User{}
+			err = json.Unmarshal(hit.Source_, &user)
+			if err != nil {
+				//log.Println(err)
+				dump.Println(err)
+				return
+			}
+			dump.Println(user)
+			//log.Println(user)
+		}
+	})
+	if err != nil {
+		log.Println(err)
+	}
 
 	//dump.Println(res)
 

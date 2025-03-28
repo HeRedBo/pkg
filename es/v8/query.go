@@ -247,7 +247,7 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 			}
 		}
 	}
-	res, err := searchService.Scroll("lm").Do(ctx)
+	res, err := searchService.Scroll("1m").Do(ctx)
 	scrollRes := &scroll.Response{
 		Aggregations:    res.Aggregations,
 		Clusters_:       res.Clusters_,
