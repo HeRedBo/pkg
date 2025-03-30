@@ -55,7 +55,7 @@ func (h *consumerGroupHandler) Cleanup(sarama.ConsumerGroupSession) error {
 func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for message := range claim.Messages() {
 		if commit, err := h.callback(message); commit {
-			session.MarkMessage(message, "")
+			session.MarkMessage(message, "") // 标记消息已处理
 		} else if err != nil {
 			//logger.Error("kafka consumer msg error ", zap.Error(err))
 		}
@@ -128,28 +128,32 @@ func (c *Consumer) Close() error {
 }
 
 func (c *Consumer) keepConnect() {
+	// 外层循环：持续监听重连信号，直到 exit 标志为 true
 	for !c.exit {
 		select {
-		case <-c.reConnect:
+		case <-c.reConnect: // 监听重连信号通道
+			// 1. 检查当前状态是否为已断开
 			if c.status != KafkaConsumerDisconnected {
-				continue
+				continue // 如果已连接，跳过后续逻辑
 			}
-
 			//logger.Warn("KafkaConsumer reconnecting", zap.Any(c.groupID, c.topics))
-		breakLoop:
+		breakLoop: // 标签：用于跳出内部重试循环
+			// 2. 内部重试循环：尝试重连直到成功或熔断器开启
 			for {
+				// 2.1 通过熔断器执行连接操作
 				err := c.breaker.Run(func() error {
-					return c.connect()
+					return c.connect() // 尝试连接 Kafka
 				})
-
+				// 2.2 根据错误类型处理结果
 				switch err {
-				case nil:
-					go c.consume()
-					break breakLoop
-				case breaker.ErrBreakerOpen:
+				case nil: // 成功连接
+					go c.consume()  // 启动消息消费协程
+					break breakLoop // 跳出内部重试循环
+				case breaker.ErrBreakerOpen: // 熔断器开启（频繁失败）
+					// 5秒后重新触发重连信号
 					time.AfterFunc(5*time.Second, func() { c.reConnect <- true })
-					break breakLoop
-				default:
+					break breakLoop // 跳出内部重试循环
+				default: // 其他错误（如网络问题）
 					//logger.Error("kafka consumer connect error", zap.Error(err))
 				}
 			}
@@ -158,39 +162,44 @@ func (c *Consumer) keepConnect() {
 }
 
 func (c *Consumer) consume() {
+	// 1. 创建可取消的上下文，用于控制消费者生命周期
 	ctx, cancel := context.WithCancel(context.Background())
-	c.cancel = cancel
-
+	c.cancel = cancel // 保存 cancel 函数，供外部调用关闭
+	// 2. 启动一个协程处理消息消费
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-
 		for {
+			// 2.1 核心消费循环：调用 Kafka 的 Consume 方法
 			if err := c.consumer.Consume(ctx, c.topics, c.handler); err != nil {
+				// 2.1.1 如果是正常关闭错误，直接退出
 				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
 					return
 				}
 				//logger.Error("kafka consumer error", zap.Error(err))
+				// 2.1.2 处理其他错误（如网络中断）
 				c.handleConsumerError(err)
 			}
 
+			// 2.2 检查上下文是否已关闭，是则退出循环
 			if ctx.Err() != nil {
 				return
 			}
 		}
 	}()
-
-	<-c.handler.ready
-
+	// 3. 等待消费者组初始化完成（handler.Setup() 被调用）
+	<-c.handler.ready // 等待消费者组初始化完成
+	// 4. 监听系统终止信号（SIGINT/SIGTERM）
 	sigterm := make(chan os.Signal, 1)
 	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
-
+	// 5. 使用 select 监听两个事件通道
 	select {
-	case <-ctx.Done():
+	case <-ctx.Done(): // 5.1 上下文被取消（如主动调用 Close()）
 		//logger.Info("kafka consumer context closed")
-	case <-sigterm:
+		// 无需操作，直接退出
+	case <-sigterm: // 阻塞直到接收到终止信号
 		//logger.Info("kafka consumer received termination signal")
-		cancel()
+		cancel() // 触发上下文取消
 	}
 }
 
