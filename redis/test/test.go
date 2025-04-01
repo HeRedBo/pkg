@@ -10,17 +10,14 @@ import (
 func main() {
 	// 单机模式配置示例
 	singleConfig := redis.Config{
-		Addr:      "localhost:6379",
-		Password:  "",
-		DB:        0,
-		IsCluster: false,
+		Addr:     "localhost:6379",
+		Password: "",
+		DB:       0,
 	}
-
 	// 集群模式配置示例
 	//clusterConfig := redis.Config{
 	//	Addrs:     []string{"node1:6379", "node2:6379", "node3:6379"},
 	//	Password:  "",
-	//	IsCluster: true,
 	//}
 
 	// 创建 Redis 客户端实例
@@ -50,11 +47,14 @@ func main() {
 		return
 	}
 	fmt.Println("Value:", result)
+	// 获取 过期时间
+	ttl, err := client.GetClient().TTL(ctx, key).Result()
+	fmt.Println("TTL:", ttl)
 	// 删除键
-	deleted, err := client.Del(ctx, key)
-	if err != nil {
-		fmt.Println("Failed to delete key:", err)
-		return
-	}
-	fmt.Println("Deleted keys:", deleted)
+	//deleted, err := client.Del(ctx, key)
+	//if err != nil {
+	//	fmt.Println("Failed to delete key:", err)
+	//	return
+	//}
+	//fmt.Println("Deleted keys:", deleted)
 }
