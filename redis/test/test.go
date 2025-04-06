@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/gookit/goutil/dump"
 	"pkg/redis"
-	"time"
 )
 
 func main() {
@@ -29,27 +29,31 @@ func main() {
 	defer client.Close()
 
 	ctx := context.Background()
-	key := "test_key"
-	value := "test_value"
-	expiration := 10 * time.Second
+	//key := "test_key"
+	//value := "test_value"
+	//expiration := 10 * time.Second
+	//
+	//// 设置键值对
+	//err = client.Set(ctx, key, value, expiration)
+	//if err != nil {
+	//	fmt.Println("Failed to set key:", err)
+	//	return
+	//}
+	//
+	//// 获取键对应的值
+	//result, err := client.Get(ctx, key)
+	//if err != nil {
+	//	fmt.Println("Failed to get key:", err)
+	//	return
+	//}
+	//fmt.Println("Value:", result)
+	//// 获取 过期时间
+	//ttl, err := client.GetClient().TTL(ctx, key).Result()
+	//fmt.Println("TTL:", ttl)
 
-	// 设置键值对
-	err = client.Set(ctx, key, value, expiration)
-	if err != nil {
-		fmt.Println("Failed to set key:", err)
-		return
-	}
+	version := client.Version(ctx)
+	dump.Println(version)
 
-	// 获取键对应的值
-	result, err := client.Get(ctx, key)
-	if err != nil {
-		fmt.Println("Failed to get key:", err)
-		return
-	}
-	fmt.Println("Value:", result)
-	// 获取 过期时间
-	ttl, err := client.GetClient().TTL(ctx, key).Result()
-	fmt.Println("TTL:", ttl)
 	// 删除键
 	//deleted, err := client.Del(ctx, key)
 	//if err != nil {

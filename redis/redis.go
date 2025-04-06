@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/redis/go-redis/v9"
+	"strings"
 	"time"
 )
 
@@ -82,4 +83,13 @@ func (r *Client) GetClient() redis.UniversalClient {
 // Close 关闭 Redis 客户端连接
 func (r *Client) Close() error {
 	return r.client.Close()
+}
+
+func (r *Client) Version(ctx context.Context) string {
+	server := r.client.Info(ctx).Val()
+	spl1 := strings.Split(server, "# Server")
+	spl2 := strings.Split(spl1[1], "redis_version:")
+	spl3 := strings.Split(spl2[1], "redis_git_sha1:")
+	//dump.Println(server)
+	return spl3[0]
 }
