@@ -2,6 +2,7 @@ package redis
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/redis/go-redis/v9"
 	"strings"
@@ -57,6 +58,10 @@ func NewRedisClient(config Config) (*Client, error) {
 	}, nil
 }
 
+func (r *Client) GetClient() redis.UniversalClient {
+	return r.client
+}
+
 // Set 设置键值对
 func (r *Client) Set(ctx context.Context, key string, value interface{}, expiration time.Duration) error {
 	return r.client.Set(ctx, key, value, expiration).Err()
@@ -72,13 +77,66 @@ func (r *Client) Del(ctx context.Context, keys ...string) (int64, error) {
 	return r.client.Del(ctx, keys...).Result()
 }
 
-func (r *Client) GetClient() redis.UniversalClient {
-	return r.client
+func (r *Client) TTL(ctx context.Context, key string) (time.Duration, error) {
+	if len(key) == 0 {
+		return 0, errors.New("empty key")
+	}
+	ttl, err := r.client.TTL(ctx, key).Result()
+	if err != nil && err != redis.Nil {
+		return -1, err
+	}
+	return ttl, nil
+}
+func (r *Client) Expire(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	if len(key) == 0 {
+		return false, errors.New("empty key")
+	}
+	ok, err := r.client.Expire(ctx, key, ttl).Result()
+	return ok, err
 }
 
-//func (r *Client) TTL(key string) (time.Duration, error) {
-//
-//}
+func (r *Client) ExpireAt(ctx context.Context, key string, ttl time.Time) (bool, error) {
+	if len(key) == 0 {
+		return false, errors.New("empty key")
+	}
+	return r.client.ExpireAt(ctx, key, ttl).Result()
+}
+
+func (r *Client) Exists(ctx context.Context, keys ...string) (bool, error) {
+	if len(keys) == 0 {
+		return false, errors.New("empty key")
+	}
+	value, err := r.client.Exists(ctx, keys...).Result()
+	return value > 0, err
+}
+
+func (r *Client) IsExist(ctx context.Context, key string) bool {
+	if len(key) == 0 {
+		return false
+	}
+	value, err := r.client.Exists(ctx, key).Result()
+	if err != nil && err != redis.Nil {
+		// TODO 记录日志
+		fmt.Println(err)
+	}
+	return value > 0
+}
+
+func (r *Client) Delete(ctx context.Context, key string) error {
+	if len(key) == 0 {
+		return errors.New("empty key")
+	}
+	_, err := r.client.Del(ctx, key).Result()
+	return err
+}
+
+func (r *Client) Incr(ctx context.Context, key string) (value int64, err error) {
+	if len(key) == 0 {
+		return 0, errors.New("empty key")
+	}
+	value, err = r.client.Incr(ctx, key).Result()
+	return
+}
 
 // Close 关闭 Redis 客户端连接
 func (r *Client) Close() error {
