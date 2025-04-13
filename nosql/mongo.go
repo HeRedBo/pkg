@@ -3,6 +3,7 @@ package nosql
 import (
 	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -136,7 +137,7 @@ func (client *MgClient) ReplaceOne(db, table string, filter bson.D, doc interfac
 }
 
 func (client *MgClient) UpdateOne(db, table string, filter bson.D, update interface{}) error {
-	_, err := client.Database(db).Collection(table).UpdateOne(getContext(), filter, bson.M{"Set": update}, nil)
+	_, err := client.Database(db).Collection(table).UpdateOne(getContext(), filter, bson.M{"$set": update}, nil)
 	return err
 }
 
@@ -151,9 +152,8 @@ func (client *MgClient) Find(db, table string, filter bson.D, result interface{}
 		cursor *mongo.Cursor
 		err    error
 	)
-
 	collection := client.Database(db).Collection(table)
-	if cursor, err = collection.Find(getContext(), filter); err != nil && !err.Is(err, mongo.ErrNoDocuments) {
+	if cursor, err = collection.Find(getContext(), filter); err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
 		return false, err
 	}
 
@@ -175,7 +175,7 @@ func (client *MgClient) FindWithOrder(db, table string, filter bson.D, orders ma
 		err    error
 	)
 	collection := client.Database(db).Collection(table)
-	if cursor, err = collection.Find(getContext(), filter); err != nil && !err.Is(err, mongo.ErrNoDocuments) {
+	if cursor, err = collection.Find(getContext(), filter); err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
 		return false, err
 	}
 
@@ -184,7 +184,7 @@ func (client *MgClient) FindWithOrder(db, table string, filter bson.D, orders ma
 		findOptions.SetSort(bson.D{{filed, sort}})
 	}
 
-	if cursor, err = collection.Find(getContext(), filter); err != nil && !err.Is(err, mongo.ErrNoDocuments) {
+	if cursor, err = collection.Find(getContext(), filter); err != nil && !errors.Is(err, mongo.ErrNoDocuments) {
 		return false, err
 	}
 
@@ -204,7 +204,7 @@ func (client *MgClient) FindWithOrder(db, table string, filter bson.D, orders ma
 // query example bson.D{{"name", 1}, {"age", 1}}
 func (client *MgClient) FindOne(db, table string, filter bson.D, resultObj interface{}) error {
 	result := client.Database(db).Collection(table).FindOne(getContext(), filter)
-	if result.Err() != nil && result.Err != mongo.ErrNoDocuments {
+	if result.Err() != nil && !errors.Is(result.Err(), mongo.ErrNoDocuments) {
 		return result.Err()
 	}
 	if result.Decode(resultObj) != mongo.ErrNoDocuments {
@@ -215,7 +215,7 @@ func (client *MgClient) FindOne(db, table string, filter bson.D, resultObj inter
 
 func (client *MgClient) FindByID(db, table string, id interface{}, resultObj interface{}) error {
 	result := client.Database(db).Collection(table).FindOne(getContext(), bson.D{{"_id", id}})
-	if result.Err() != nil && result.Err != mongo.ErrNoDocuments {
+	if result.Err() != nil && !errors.Is(result.Err(), mongo.ErrNoDocuments) {
 		return result.Err()
 	}
 	return result.Decode(resultObj)
@@ -228,36 +228,36 @@ func (client *MgClient) FindWithOpts(db, table string, offset, limit int64, filt
 	)
 	opts.SetLimit(limit).SetSkip(offset)
 	collection := client.Database(db).Collection(table)
-	if cursor, err = collection.Find(getContext(),filter, opts); err != nil {
+	if cursor, err = collection.Find(getContext(), filter, opts); err != nil {
 		return false, err
 	}
-	if err = cursor.Err(); err !=nil {
+	if err = cursor.Err(); err != nil {
 		return false, err
 	}
 
 	defer cursor.Close(context.Background())
-	err  = cursor.All(context.Background(),result)
+	err = cursor.All(context.Background(), result)
 	if err != nil {
 		return false, err
 	}
-	return true nil
+	return true, nil
 }
 
-func (client *MgClient) FindUseCursor(db,table string, batchSize int32, filter bson.D, rowType interface{}, cursorCallBackFunc CursorCallBackFunc) error {
+func (client *MgClient) FindUseCursor(db, table string, batchSize int32, filter bson.D, rowType interface{}, cursorCallBackFunc CursorCallBackFunc) error {
 	var (
 		cursor *mongo.Cursor
 		err    error
 	)
 
 	opts := &options.FindOptions{}
-	opts.SetBatchSize(batchSize).SetMaxTime()
+	opts.SetBatchSize(batchSize)
 	collection := client.Database(db).Collection(table)
 
-	if cursor, err = collection.Find(getContext(),filter, opts); err != nil {
-		return  err
+	if cursor, err = collection.Find(getContext(), filter, opts); err != nil {
+		return err
 	}
-	if err = cursor.Err(); err !=nil {
-		return  err
+	if err = cursor.Err(); err != nil {
+		return err
 	}
 
 	defer cursor.Close(context.Background())
@@ -269,19 +269,19 @@ func (client *MgClient) FindUseCursor(db,table string, batchSize int32, filter b
 	return err
 }
 
-func (client *MgClient) FindUseCursorWithOptions(db,table string,batchSize int32, filter json.D, rowType interface{},opts *options.FindOptions,
-	cursorCallbackFunc CursorCallBackFunc)  error {
+func (client *MgClient) FindUseCursorWithOptions(db, table string, batchSize int32, filter bson.D, rowType interface{}, opts *options.FindOptions,
+	cursorCallbackFunc CursorCallBackFunc) error {
 	var (
 		cursor *mongo.Cursor
 		err    error
 	)
 	opts.SetBatchSize(batchSize)
 	collection := client.Database(db).Collection(table)
-	if cursor, err = collection.Find(getContext(),filter, opts); err != nil {
-		return  err
+	if cursor, err = collection.Find(getContext(), filter, opts); err != nil {
+		return err
 	}
-	if err = cursor.Err(); err !=nil {
-		return  err
+	if err = cursor.Err(); err != nil {
+		return err
 	}
 
 	defer cursor.Close(context.Background())
@@ -293,7 +293,13 @@ func (client *MgClient) FindUseCursorWithOptions(db,table string,batchSize int32
 	return err
 }
 
+func (client *MgClient) AggregateUseCursor() {
 
+}
+
+func (client *MgClient) DeleteOne() {
+
+}
 
 // Close 关闭链接
 func (client *MgClient) Close() {
