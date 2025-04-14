@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/gookit/goutil/dump"
+	"go.mongodb.org/mongo-driver/bson"
 	"pkg/nosql"
 )
 
@@ -136,15 +136,15 @@ func main() {
 	//10. count
 	//count, err := mongoClient.EstimatedDocumentCount(DBName, TableName)
 	//nosql.MongoStdLogger.Print("EstimatedDocumentCount : ", " count : ", count, " error : ", err)
+
 	//11.删除
-
 	//$in 中不存在的id不抛异常
-	//err = mongoClient.DeleteMany(DBName, TableName, bson.D{{"_id", bson.D{{"$in", []int64{4, 7}}}}})
-	//if err != nil {
-	//	nosql.MongoStdLogger.Print("DeleteOne : ", " error : ", err)
-	//}
+	err = mongoClient.DeleteMany(DBName, TableName, bson.D{{"_id", bson.D{{"$in", []int64{4, 7}}}}})
+	if err != nil {
+		nosql.MongoStdLogger.Print("DeleteOne : ", " error : ", err)
+	}
 
-	dump.Println(mongoClient)
+	//dump.Println(mongoClient)
 }
 
 // 游标会超时，所以在回调函数内部，一般不宜耦合过多操作

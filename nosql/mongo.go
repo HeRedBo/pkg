@@ -7,6 +7,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readconcern"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"log"
 	"os"
@@ -293,12 +294,107 @@ func (client *MgClient) FindUseCursorWithOptions(db, table string, batchSize int
 	return err
 }
 
-func (client *MgClient) AggregateUseCursor() {
-
+func (client *MgClient) AggregateUseCursor(db, table string, quries []bson.D, rowType interface{}, cursorCallbackFunc CursorCallBackFunc) error {
+	pipeline := mongo.Pipeline{}
+	for _, q := range quries {
+		pipeline = append(pipeline, q)
+	}
+	cursor, err := client.Database(db).Collection(table).Aggregate(context.Background(), pipeline, options.Aggregate())
+	if cursor != nil {
+		defer cursor.Close(context.Background())
+		for cursor.Next(context.Background()) {
+			err = cursor.Decode(rowType)
+			cursorCallbackFunc(rowType, err)
+		}
+	}
+	return err
 }
 
-func (client *MgClient) DeleteOne() {
+func (client *MgClient) DeleteOne(db, table string, filter bson.D) error {
+	_, err := client.Database(db).Collection(table).DeleteOne(getContext(), filter, nil)
+	return err
+}
 
+func (client *MgClient) DeleteMany(db, table string, filter bson.D) error {
+	_, err := client.Database(db).Collection(table).DeleteMany(getContext(), filter, nil)
+	return err
+}
+
+func (client *MgClient) QueryCount(db, table string, filter bson.D) (int64, error) {
+	return client.Database(db).Collection(table).CountDocuments(getContext(), filter, nil)
+}
+
+func (client *MgClient) EstimatedDocumentCount(db, table string) (int64, error) {
+	return client.Database(db).Collection(table).EstimatedDocumentCount(getContext(), nil)
+}
+
+func (client *MgClient) Distinct(db, table string, filter bson.D, distintField string) (result []interface{}, err error) {
+	collection := client.Database(db).Collection(table)
+	return collection.Distinct(getContext(), distintField, filter, nil)
+}
+
+func (client *MgClient) CreateIndex(db, table, key string, uniqueKey bool) error {
+	_, err := client.Database(db).Collection(table).Indexes().CreateOne(getContext(),
+		mongo.IndexModel{
+			Keys:    bson.D{{Key: key, Value: 1}}, // 1: 升序, -1: 降序
+			Options: options.Index().SetUnique(uniqueKey),
+		})
+	return err
+}
+
+func (client *MgClient) CreateMultiIndex(db, table string, keys []string, uniqueKey bool) error {
+	collection := client.Database(db).Collection(table)
+	// 使用 bson.D 构建索引键
+	indexKeys := make(bson.D, 0, len(keys))
+	for _, key := range keys {
+		// 默认所有字段使用降序索引（Value: -1）
+		// 若需支持混合排序，需修改函数参数设计
+		indexKeys = append(indexKeys, bson.E{Key: key, Value: -1})
+	}
+	// 创建索引模型
+	opts := options.Index().SetUnique(uniqueKey)
+	indexModel := mongo.IndexModel{
+		Keys:    indexKeys,
+		Options: opts,
+	}
+	// 创建索引（显式传递 context）
+	_, err := collection.Indexes().CreateOne(context.Background(), indexModel)
+	return err
+}
+
+func (client *MgClient) Drop(db, table string) error {
+	return client.Database(db).Collection(table).Drop(getContext())
+}
+
+func (client *MgClient) RenameTable(db, table, newTable string) error {
+	cmd := bson.D{
+		{"renameCollection", strings.Join([]string{db, table}, ".")},
+		{"to", strings.Join([]string{db, newTable}, ".")},
+	}
+	//注意:只有admin库才有执行renameCollection的权限
+	b, err := client.Database("admin").RunCommand(getContext(), cmd).DecodeBytes()
+	if err != nil {
+		return err
+	}
+	if b != nil && b.Index(0).Value().Double() == 1 {
+		return nil
+	} else {
+		if b != nil && b.Index(1).Validate() == nil {
+			return errors.New(b.Index(1).String())
+		}
+		if b != nil {
+			return errors.New(b.String())
+		}
+		return errors.New("rename failed")
+	}
+}
+
+func (client *MgClient) CopyTable(db, table, newTable string) (bool, error) {
+	_, err := client.Database(db).Collection(table, options.Collection().SetReadPreference(readpref.Primary()).SetReadConcern(readconcern.Local())).Aggregate(getContext(), []interface{}{bson.M{"$out": newTable}})
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // Close 关闭链接
