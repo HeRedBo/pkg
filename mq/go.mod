@@ -1,4 +1,4 @@
-module mq
+module pkg/mq
 
 go 1.23.2
 

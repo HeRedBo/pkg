@@ -1,4 +1,4 @@
-module cache
+module pkg/cache
 
 go 1.23.2
 

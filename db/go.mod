@@ -1,4 +1,4 @@
-module db
+module pkg/db
 
 go 1.23.2
 

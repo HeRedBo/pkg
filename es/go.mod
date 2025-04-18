@@ -1,4 +1,4 @@
-module es
+module pkg/es
 
 go 1.23.2
 

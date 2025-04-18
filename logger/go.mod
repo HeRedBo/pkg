@@ -1,4 +1,4 @@
-module logger
+module pkg/logger
 
 go 1.23.2
 

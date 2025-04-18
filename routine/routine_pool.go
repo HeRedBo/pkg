@@ -76,6 +76,7 @@ func QueueLen() int {
 }
 
 // region 任务提交接口
+
 func PutTask(f Function) {
 	if defaultPool == nil {
 		Init(8, 64, 10*time.Second)
@@ -90,8 +91,6 @@ func Stop() {
 	defaultPool.Stop()
 	defaultPool = nil
 }
-
-// endregion
 
 type worker struct {
 	Stop chan bool
@@ -228,6 +227,7 @@ func (p *Pool) Start() {
 		go p.run(i)
 	}
 	time.Sleep(time.Millisecond) //防止start后马上put(task),接着就stop()
+
 }
 
 func (p *Pool) checkRunningPanic() {

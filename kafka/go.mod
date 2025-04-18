@@ -1,4 +1,4 @@
-module kafka
+module pkg/kafka
 
 go 1.23.2
 
