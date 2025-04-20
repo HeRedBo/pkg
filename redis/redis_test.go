@@ -3,7 +3,8 @@ package redis
 import (
 	"context"
 	"fmt"
-	"pkg/compression"
+	"github.com/HeRedBo/pkg/compression"
+	"github.com/gookit/goutil/dump"
 	"testing"
 	"time"
 )
@@ -49,5 +50,6 @@ func TestGet(t *testing.T) {
 	if err != nil {
 		t.Error("UnmarshalDataFromJsonWithGzip error", val, err)
 	}
+	dump.Println(output)
 	t.Log(output)
 }

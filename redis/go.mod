@@ -1,14 +1,14 @@
-module pkg/redis
+module github.com/HeRedBo/pkg/redis
 
 go 1.23.2
 
 require (
 	github.com/gookit/goutil v0.6.18
 	github.com/redis/go-redis/v9 v9.3.0
-	pkg/compression v0.0.0 // 任意版本占位符
+
 )
 
-replace pkg/compression => ../compression // 关键：映射到本地的 compression 目录
+//replace pkg/compression => ../compression // 关键：映射到本地的 compression 目录
 
 require (
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
