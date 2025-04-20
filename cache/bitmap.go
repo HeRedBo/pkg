@@ -1,9 +1,9 @@
 package cache
 
 import (
-	"errors"
 	"fmt"
-	"github.com/redis/go-redis/v9"
+	"github.com/HeRedBo/pkg/errors"
+	"github.com/go-redis/redis/v7"
 	"strings"
 )
 
@@ -44,14 +44,16 @@ func (r *Redis) SetBit(key string, offset int64, val int) (value int64, err erro
 
 	realKey := GetKey(key, offset)
 	if r.client != nil {
-		value, err := r.client.SetBit(Ctx, realKey, GetOffset(offset), val).Result()
+		value, err := r.client.SetBit(realKey, GetOffset(offset), val).Result()
 		if err != nil {
-			return value, err
+			return value, errors.Wrapf(err, "redis setbit key: %s err", realKey)
+			//return value, err
 		}
 	}
-	r.clusterClient.SetBit(Ctx, realKey, GetOffset(offset), val).Result()
+	r.clusterClient.SetBit(realKey, GetOffset(offset), val).Result()
 	if err != nil {
-		return value, err
+		return value, errors.Wrapf(err, "redis setbit key: %s err", realKey)
+		//return value, err
 	}
 	return
 }
@@ -65,35 +67,38 @@ func (r *Redis) GetBit(key string, offset int64) (value int64, err error) {
 	realKey := GetKey(key, offset)
 
 	if r.client != nil {
-		value, err = r.client.GetBit(Ctx, realKey, GetOffset(offset)).Result()
+		value, err = r.client.GetBit(realKey, GetOffset(offset)).Result()
 		if err != nil {
-			return value, err
+			return value, errors.Wrapf(err, "redis getbit key: %s err", realKey)
+			//return value, err
 		}
 	}
 
-	value, err = r.clusterClient.GetBit(Ctx, realKey, GetOffset(offset)).Result()
+	value, err = r.clusterClient.GetBit(realKey, GetOffset(offset)).Result()
 	if err != nil {
-		return value, err
+		return value, errors.Wrapf(err, "redis getbit key: %s err", realKey)
+		//return value, err
 	}
 	return
 }
 
-func (r *Redis) SetBitBit(key string, offset int64) (value int64, err error) {
+func (r *Redis) SetBigBit(key string, offset int64) (value int64, err error) {
 	if len(key) == 0 {
 		err = errors.New("empty key")
 		return
 	}
 	realKey := GetBigKey(key, offset)
 	if r.client != nil {
-		value, err = r.client.GetBit(Ctx, realKey, GetBigOffset(offset)).Result()
+		value, err = r.client.GetBit(realKey, GetBigOffset(offset)).Result()
 		if err != nil {
-			return value, err
+			return value, errors.Wrapf(err, "redis setbit key: %s err", realKey)
 		}
 	}
 
-	value, err = r.clusterClient.GetBit(Ctx, realKey, GetBigOffset(offset)).Result()
+	value, err = r.clusterClient.GetBit(realKey, GetBigOffset(offset)).Result()
 	if err != nil {
-		return value, err
+		return value, errors.Wrapf(err, "redis setbit key: %s err", realKey)
+		//return value, err
 	}
 	return
 }
@@ -105,16 +110,16 @@ func (r *Redis) GetBigBit(key string, offset int64) (value int64, err error) {
 	}
 	realKey := GetBigKey(key, offset)
 	if r.client != nil {
-		value, err = r.client.GetBit(Ctx, realKey, GetOffset(offset)).Result()
+		value, err = r.client.GetBit(realKey, GetOffset(offset)).Result()
 		if err != nil {
-			return value, err
+			return value, errors.Wrapf(err, "redis getbit key: %s err", realKey)
 		}
 	}
 	//集群版为了避免单个bitmap只会落到集群中的一个节点，这里默认对bitmap进行分捅，以平衡redis集群负载，防止单个bitmap热点问题
 	//对于超过redis bitmap范围的数据，采用不同的分捅方式
-	value, err = r.clusterClient.GetBit(Ctx, realKey, GetBigOffset(offset)).Result()
+	value, err = r.clusterClient.GetBit(realKey, GetBigOffset(offset)).Result()
 	if err != nil {
-		return value, err
+		return value, errors.Wrapf(err, "redis getbit key: %s err", realKey)
 	}
 	return
 }
@@ -126,13 +131,13 @@ func (r *Redis) SetBitNOBucket(key string, offset int64, val int) (value int64, 
 	}
 
 	if r.client != nil {
-		value, err = r.client.SetBit(Ctx, key, offset, val).Result()
+		value, err = r.client.SetBit(key, offset, val).Result()
 		if err != nil {
 			return value, err
 		}
 		return
 	}
-	value, err = r.clusterClient.SetBit(Ctx, key, offset, val).Result()
+	value, err = r.clusterClient.SetBit(key, offset, val).Result()
 	if err != nil {
 		return value, err
 	}
@@ -145,15 +150,16 @@ func (r *Redis) GetBitNOBucket(key string, offset int64) (value int64, err error
 		return
 	}
 	if r.client != nil {
-		value, err = r.client.GetBit(Ctx, key, offset).Result()
+		value, err = r.client.GetBit(key, offset).Result()
 		if err != nil {
-			return value, err
+			return value, errors.Wrapf(err, "redis getbit key: %s err", key)
+			//return value, err
 		}
 		return
 	}
-	value, err = r.clusterClient.GetBit(Ctx, key, offset).Result()
+	value, err = r.clusterClient.GetBit(key, offset).Result()
 	if err != nil {
-		return value, err
+		return value, errors.Wrapf(err, "redis getbit key: %s err", key)
 	}
 	return
 }
@@ -168,13 +174,13 @@ func (r *Redis) BitCountNOBucket(op, destKey string, keys ...string) (value int6
 	if r.client != nil {
 		switch op {
 		case "AND":
-			cmd = r.client.BitOpAnd(Ctx, destKey, keys...)
+			cmd = r.client.BitOpAnd(destKey, keys...)
 		case "OR":
-			cmd = r.client.BitOpOr(Ctx, destKey, keys...)
+			cmd = r.client.BitOpOr(destKey, keys...)
 		case "XOR":
-			cmd = r.client.BitOpXor(Ctx, destKey, keys...)
+			cmd = r.client.BitOpXor(destKey, keys...)
 		case "NOT":
-			cmd = r.client.BitOpNot(Ctx, destKey, keys[0])
+			cmd = r.client.BitOpNot(destKey, keys[0])
 		default:
 			return 0, errors.New("illegal op " + op + "; key:" + destKey)
 		}
@@ -187,13 +193,13 @@ func (r *Redis) BitCountNOBucket(op, destKey string, keys ...string) (value int6
 
 	switch op {
 	case "AND":
-		cmd = r.client.BitOpAnd(Ctx, destKey, keys...)
+		cmd = r.client.BitOpAnd(destKey, keys...)
 	case "OR":
-		cmd = r.client.BitOpOr(Ctx, destKey, keys...)
+		cmd = r.client.BitOpOr(destKey, keys...)
 	case "XOR":
-		cmd = r.client.BitOpXor(Ctx, destKey, keys...)
+		cmd = r.client.BitOpXor(destKey, keys...)
 	case "NOT":
-		cmd = r.client.BitOpNot(Ctx, destKey, keys[0])
+		cmd = r.client.BitOpNot(destKey, keys[0])
 	default:
 		return 0, errors.New("illegal op " + op + "; key:" + destKey)
 	}

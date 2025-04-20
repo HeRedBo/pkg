@@ -3,9 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/HeRedBo/pkg/mq"
 	"github.com/IBM/sarama"
 	"github.com/gookit/goutil/dump"
-	"pkg/mq"
 	"time"
 )
 

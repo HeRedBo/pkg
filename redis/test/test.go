@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/HeRedBo/pkg/redis"
 	"github.com/gookit/goutil/dump"
 	"log"
-	"pkg/redis"
 	"time"
 )
 
@@ -37,16 +37,16 @@ func main() {
 	defer client.Close()
 
 	ctx := context.Background()
-	//key := "test_key"
-	//value := "test_value"
-	//expiration := 10 * time.Second
-	//
-	//// 设置键值对
-	//err = client.Set(ctx, key, value, expiration)
-	//if err != nil {
-	//	fmt.Println("Failed to set key:", err)
-	//	return
-	//}
+	key := "test_key"
+	value := "test_value"
+	expiration := 10 * time.Second
+
+	// 设置键值对
+	err = client.Set(ctx, key, value, expiration)
+	if err != nil {
+		fmt.Println("Failed to set key:", err)
+		return
+	}
 	//
 	//// 获取键对应的值
 	//result, err := client.Get(ctx, key)

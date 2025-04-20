@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"github.com/go-redis/redis/v7"
 	"log"
 	"os"
 	"time"
@@ -37,6 +38,11 @@ type stdLogger interface {
 }
 
 var CacheStdLogger stdLogger
+
+type Redis struct {
+	client        *redis.Client
+	clusterClient *redis.ClusterClient
+}
 
 func init() {
 	CacheStdLogger = log.New(os.Stdout, "[cache]", log.LstdFlags|log.Lshortfile)
