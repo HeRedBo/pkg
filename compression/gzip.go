@@ -52,8 +52,8 @@ func MarshalJsonAndGzip(data interface{}) ([]byte, error) {
 	return gzipData, err
 }
 
-// UnmarshalDataFormJsonWithGzip 解压
-func UnmarshalDataFormJsonWithGzip(input []byte, output interface{}) error {
+// UnmarshalDataFromJsonWithGzip 解压
+func UnmarshalDataFromJsonWithGzip(input []byte, output interface{}) error {
 	decodeData, err := GzipDecode(input)
 	if err != nil {
 		return nil
