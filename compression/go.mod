@@ -1,4 +1,4 @@
-module github.com/HeRedBo/pkg/compression
+module github.com/heredbo/pkg/compression
 go 1.23.2
 
 require github.com/gookit/goutil v0.6.18
