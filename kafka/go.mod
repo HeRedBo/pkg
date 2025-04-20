@@ -1,4 +1,4 @@
-module pkg/kafka
+module github.com/HeRedBo/pkg/kafka
 
 go 1.23.2
 

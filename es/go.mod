@@ -1,4 +1,4 @@
-module pkg/es
+module github.com/HeRedBo/pkg/es
 
 go 1.23.2
 

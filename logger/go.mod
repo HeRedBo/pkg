@@ -1,4 +1,4 @@
-module pkg/logger
+module github.com/HeRedBo/pkg/logger
 
 go 1.23.2
 

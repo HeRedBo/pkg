@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/HeRedBo/pkg/kafka"
 	"github.com/IBM/sarama"
 	"log"
 	"os"
 	"os/signal"
-	"pkg/kafka"
 	"sync"
 	"syscall"
 )

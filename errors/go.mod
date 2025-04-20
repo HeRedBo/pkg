@@ -1,4 +1,4 @@
-module pkg/errors
+module github.com/HeRedBo/pkg/errors
 
 go 1.23.2
 

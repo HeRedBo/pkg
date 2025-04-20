@@ -3,9 +3,9 @@ package routine
 import (
 	"context"
 	"fmt"
+	"github.com/HeRedBo/pkg/errors"
 	"log"
 	"os"
-	"pkg/errors"
 	"sync"
 	"sync/atomic"
 	"time"

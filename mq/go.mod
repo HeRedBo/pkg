@@ -1,4 +1,4 @@
-module pkg/mq
+module github.com/HeRedBo/pkg/mq
 
 go 1.23.2
 

@@ -1,4 +1,4 @@
-module pkg/nosql
+module github.com/HeRedBo/pkg/nosql
 
 go 1.23.2
 
