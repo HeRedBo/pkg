@@ -21,7 +21,7 @@ func TestUnmarshalDataFormJsonWithGzip(t *testing.T) {
 		t.Errorf("MarshalJsonAndGzip err %v", err)
 	}
 	outPutUser := UserTest{}
-	err = UnmarshalDataFormJsonWithGzip(userByte, &outPutUser)
+	err = UnmarshalDataFromJsonWithGzip(userByte, &outPutUser)
 	if err != nil {
 		t.Errorf("UnmarshalDataFromJsonWithGzip err %v", err)
 	}

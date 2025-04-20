@@ -1,7 +1,7 @@
 package main
 
 import (
-	"pkg/db"
+	"github.com/HeRedBo/pkg/db"
 	"time"
 
 	"github.com/gookit/goutil/dump"

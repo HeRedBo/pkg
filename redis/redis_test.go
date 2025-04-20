@@ -3,8 +3,8 @@ package redis
 import (
 	"context"
 	"fmt"
+	"github.com/HeRedBo/pkg/compression"
 	"github.com/gookit/goutil/dump"
-	"github.com/heredbo/pkg/compression"
 	"testing"
 	"time"
 )

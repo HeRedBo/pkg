@@ -1,4 +1,4 @@
-module pkg/db
+module github.com/HeRedBo/pkg/db
 
 go 1.23.2
 
