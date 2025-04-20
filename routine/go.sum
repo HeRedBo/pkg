@@ -1,3 +1,5 @@
+github.com/HeRedBo/pkg/errors v1.0.0 h1:jZsP+TpOk4CKKUgFd/mDQEaBetMwIYTz8/wfcij5RVI=
+github.com/HeRedBo/pkg/errors v1.0.0/go.mod h1:A9CiSTHhQnTvosBQwHejQVNp81YxcMASwwpPCzZboLQ=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 go.uber.org/multierr v1.10.0 h1:S0h4aNzvfcFsC3dRF1jLoaov7oRaKqRGC/pUEJ2yvPQ=
