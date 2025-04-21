@@ -153,7 +153,6 @@ func (r *Redis) GetBitNOBucket(key string, offset int64) (value int64, err error
 		value, err = r.client.GetBit(key, offset).Result()
 		if err != nil {
 			return value, errors.Wrapf(err, "redis getbit key: %s err", key)
-			//return value, err
 		}
 		return
 	}
@@ -164,7 +163,34 @@ func (r *Redis) GetBitNOBucket(key string, offset int64) (value int64, err error
 	return
 }
 
-func (r *Redis) BitCountNOBucket(op, destKey string, keys ...string) (value int64, err error) {
+func (r *Redis) BitCountNOBucket(key string, start, end int64) (value int64, err error) {
+	if len(key) == 0 {
+		err = errors.New("empty key")
+		return
+	}
+
+	if r.client != nil {
+		value, err = r.client.BitCount(key, &redis.BitCount{
+			Start: start,
+			End:   end,
+		}).Result()
+		if err != nil {
+			return value, errors.Wrapf(err, "redis bitcount key: %s err", key)
+		}
+		return
+	}
+
+	value, err = r.clusterClient.BitCount(key, &redis.BitCount{
+		Start: start,
+		End:   end,
+	}).Result()
+	if err != nil {
+		return value, errors.Wrapf(err, "redis bitcount key: %s err", key)
+	}
+	return
+}
+
+func (r *Redis) BitOPNOBucket(op, destKey string, keys ...string) (value int64, err error) {
 	if len(keys) == 0 {
 		err = errors.New("empty key ")
 		return
@@ -208,5 +234,4 @@ func (r *Redis) BitCountNOBucket(op, destKey string, keys ...string) (value int6
 		return value, err
 	}
 	return
-
 }

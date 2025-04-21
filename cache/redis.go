@@ -65,7 +65,7 @@ func setDefaultClusterOptions(opt *redis.ClusterOptions) {
 	}
 }
 
-func initRedis(clientName string, opt *redis.Options) error {
+func InitRedis(clientName string, opt *redis.Options) error {
 	if len(clientName) == 0 {
 		return errors.New("empty client name")
 	}
@@ -176,8 +176,8 @@ func (r *Redis) GetStr(key string) (value string, err error) {
 		value, err = r.client.Get(key).Result()
 		if err != nil && err != redis.Nil {
 			return "", errors.Wrapf(err, "redis get key: %s err", key)
-			//return "", err
 		}
+		return
 	}
 
 	value, err = r.clusterClient.Get(key).Result()
