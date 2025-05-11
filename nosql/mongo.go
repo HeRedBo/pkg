@@ -74,7 +74,7 @@ func InitMongoClient(clientName, username, password string, addrs []string, mong
 	return nil
 }
 
-func GeMongoClient(clientName string) *MgClient {
+func GetMongoClient(clientName string) *MgClient {
 	if client, ok := mongoClinets[clientName]; ok {
 		return client
 	}
