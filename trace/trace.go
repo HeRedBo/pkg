@@ -10,6 +10,17 @@ import (
 
 const Header = "TRACE-ID"
 
+type T interface {
+	ID() string
+	WithRequest(req *Request) *Trace
+	WithResponse(resp *Response) *Trace
+	AppendDialog(dialog *Dialog) *Trace
+	AppendSQL(sql *SQL) *Trace
+	AppendCache(Cache *Cache) *Trace
+	SetLogger(logger *zap.Logger)
+	SetAlwaysTrace(b bool)
+}
+
 // Trace 记录的参数
 type Trace struct {
 	mux                sync.Mutex
