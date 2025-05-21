@@ -1,0 +1,4 @@
+github.com/HeRedBo/pkg/timeutil v0.0.0-20250518092132-658893059cf6 h1:AUmSt5ZGJAiMtSwSXRFwZywAl/c5UffDA4kDbtohRKA=
+github.com/HeRedBo/pkg/timeutil v0.0.0-20250518092132-658893059cf6/go.mod h1:zKu5rpSELFOnp/+c09mbJLXbkWJ9q0U5YCvnDWgksOE=
+github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
+github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
