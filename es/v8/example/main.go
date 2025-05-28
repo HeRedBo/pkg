@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"encoding/json"
+	v8 "github.com/HeRedBo/pkg/es/v8"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/scroll"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types"
 	"github.com/gookit/goutil/dump"
 	"log"
-	v8 "pkg/es/v8"
 )
 
 func init() {
