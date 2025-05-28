@@ -80,9 +80,9 @@ func WithPreference(preference string) QueryOption {
 	}
 }
 
-func WithFetchSource(fetchSource *bool) QueryOption {
+func WithFetchSource(fetchSource bool) QueryOption {
 	return func(opt *queryOption) {
-		opt.FetchSource = fetchSource
+		opt.FetchSource = &fetchSource
 	}
 }
 
