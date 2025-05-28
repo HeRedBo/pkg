@@ -10,7 +10,8 @@ import (
 )
 
 var (
-	hosts = []string{"host.docker.internal:9092"}
+	//hosts = []string{"host.docker.internal:9092"}
+	hosts = []string{"127.0.0.1:9092"}
 	topic = "test-topic"
 )
 
@@ -21,7 +22,7 @@ type Msg struct {
 }
 
 func main() {
-	productSyncMsg()
+	//productSyncMsg()
 
 	producrAsyncMsg()
 

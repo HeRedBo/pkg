@@ -1,8 +1,8 @@
 package main
 
 import (
+	"github.com/HeRedBo/pkg/nosql"
 	"go.mongodb.org/mongo-driver/bson"
-	"pkg/nosql"
 )
 
 type User struct {

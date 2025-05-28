@@ -40,24 +40,24 @@ type stdLogger interface {
 }
 
 const (
-	DefaultMaxOpenConn         = 1000
-	DefaultMaxIdleConn         = 100
-	DefaultConnMaxLifeSecond   = 30 * time.Minute
-	DefaultLogName             = "gorm"
-	DefaultSlowLogMilllisecond = 200
-	DefaultClient              = "default-mysql-client"
-	ReadClient                 = "read-mysql"
-	WirteClient                = "write-msql"
-	TxClient                   = "tx-mysql"
+	DefaultMaxOpenConn        = 1000
+	DefaultMaxIdleConn        = 100
+	DefaultConnMaxLifeSecond  = 30 * time.Minute
+	DefaultLogName            = "gorm"
+	DefaultSlowLogMillisecond = 200
+	DefaultClient             = "default-mysql-client"
+	ReadClient                = "read-mysql"
+	WriteClient               = "write-msql"
+	TxClient                  = "tx-mysql"
 )
 
 var (
-	MysqlClitents = make(map[string]*DB)
-	MysqltdLogger stdLogger
+	MysqlClients   = make(map[string]*DB)
+	MysqlStdLogger stdLogger
 )
 
 func init() {
-	MysqltdLogger = log.New(os.Stdout, "[gorm]", log.LstdFlags|log.Lshortfile)
+	MysqlStdLogger = log.New(os.Stdout, "[gorm]", log.LstdFlags|log.Lshortfile)
 }
 
 func (o *option) reset() {
@@ -66,7 +66,7 @@ func (o *option) reset() {
 	o.ConnMaxLifeSecond = 0
 	o.LogName = DefaultLogName
 	o.PrepareStmt = false
-	o.SlowLogMillSecond = DefaultSlowLogMilllisecond
+	o.SlowLogMillSecond = DefaultSlowLogMillisecond
 }
 
 func WithMaxOpenConn(maxOpenConn int) Option {
@@ -129,7 +129,7 @@ func InitMysqlClient(clientName, username, password, host, dbName string) error 
 	if err != nil {
 		return err
 	}
-	MysqlClitents[clientName] = &DB{
+	MysqlClients[clientName] = &DB{
 		DB:         db,
 		ClientName: clientName,
 		UserName:   username,
@@ -157,7 +157,7 @@ func InitMysqlClientWithOptions(clientName, username, password, host, dbName str
 	if err != nil {
 		return err
 	}
-	MysqlClitents[clientName] = &DB{
+	MysqlClients[clientName] = &DB{
 		DB:         db,
 		ClientName: clientName,
 		UserName:   username,
@@ -169,14 +169,14 @@ func InitMysqlClientWithOptions(clientName, username, password, host, dbName str
 }
 
 func GetMysqlClient(clientName string) *DB {
-	if client, ok := MysqlClitents[clientName]; ok {
+	if client, ok := MysqlClients[clientName]; ok {
 		return client
 	}
 	return nil
 }
 
-func CloseMysqlClient(clitentName string) error {
-	sqlDB, err := GetMysqlClient(clitentName).DB.DB()
+func CloseMysqlClient(clientName string) error {
+	sqlDB, err := GetMysqlClient(clientName).DB.DB()
 	if err != nil {
 		return err
 	}
@@ -193,9 +193,9 @@ func dbConnect(user, pass, host, dbName string, option *option) (*gorm.DB, error
 		"Local")
 
 	if option.SlowLogMillSecond == 0 {
-		option.SlowLogMillSecond = DefaultSlowLogMilllisecond
+		option.SlowLogMillSecond = DefaultSlowLogMillisecond
 	}
-	Log := logger.New(MysqltdLogger, logger.Config{
+	Log := logger.New(MysqlStdLogger, logger.Config{
 		SlowThreshold:             time.Duration(option.SlowLogMillSecond) * time.Millisecond,
 		LogLevel:                  logger.Warn,
 		IgnoreRecordNotFoundError: true,
@@ -246,19 +246,19 @@ func dbConnect(user, pass, host, dbName string, option *option) (*gorm.DB, error
 	// 注册钩子函数 实现 实时 打印 执行SQL功能
 	err = db.Callback().Create().After("gorm:after_create").Register(DefaultLogName, afterLog)
 	if err != nil {
-		MysqltdLogger.Print("Register Create error", err)
+		MysqlStdLogger.Print("Register Create error", err)
 	}
 	err = db.Callback().Query().After("gorm.after_query").Register(DefaultLogName, afterLog)
 	if err != nil {
-		MysqltdLogger.Print("Register Query error", err)
+		MysqlStdLogger.Print("Register Query error", err)
 	}
 	err = db.Callback().Update().After("gorm:after_update").Register(DefaultLogName, afterLog)
 	if err != nil {
-		MysqltdLogger.Print("Register Update error", err)
+		MysqlStdLogger.Print("Register Update error", err)
 	}
 	err = db.Callback().Delete().After("gorm:after_delete").Register(DefaultLogName, afterLog)
 	if err != nil {
-		MysqltdLogger.Print("Register Delete error", err)
+		MysqlStdLogger.Print("Register Delete error", err)
 	}
 	return db, nil
 }
@@ -267,7 +267,7 @@ func afterLog(db *gorm.DB) {
 	err := db.Error
 	sql := db.Dialector.Explain(db.Statement.SQL.String(), db.Statement.Vars...)
 	if err != nil {
-		MysqltdLogger.Print(sql, err)
+		MysqlStdLogger.Print(sql, err)
 	} else {
 		fmt.Println("[ SQL语句 ]", sql)
 	}

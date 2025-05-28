@@ -28,13 +28,13 @@ type MgClient struct {
 type CursorCallBackFunc func(res interface{}, err error)
 
 var (
-	mongoClinets   = map[string]*MgClient{}
+	mongoClients   = map[string]*MgClient{}
 	MongoStdLogger stdLogger
 )
 
 func init() {
 	MongoStdLogger = log.New(os.Stdout, "[Mongo]", log.LstdFlags|log.Lshortfile)
-	mongoClinets = make(map[string]*MgClient)
+	mongoClients = make(map[string]*MgClient)
 }
 
 const (
@@ -70,12 +70,12 @@ func InitMongoClient(clientName, username, password string, addrs []string, mong
 	}
 
 	mongoClient := MgClient{client}
-	mongoClinets[clientName] = &mongoClient
+	mongoClients[clientName] = &mongoClient
 	return nil
 }
 
 func GeMongoClient(clientName string) *MgClient {
-	if client, ok := mongoClinets[clientName]; ok {
+	if client, ok := mongoClients[clientName]; ok {
 		return client
 	}
 	MongoStdLogger.Print("Call 'InitMongo' before!")
