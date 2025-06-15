@@ -85,6 +85,7 @@ func KafkaMsgValueStrEncoder(value string) sarama.Encoder {
 	return sarama.StringEncoder(value)
 }
 
+// kafka默认生产者配置
 func getDefaultProducerConfig(clientID string) (config *sarama.Config) {
 	config = sarama.NewConfig()
 	config.ClientID = clientID
@@ -112,6 +113,7 @@ func getDefaultProducerConfig(clientID string) (config *sarama.Config) {
 	return
 }
 
+// 初始化同步生产者
 func InitSyncKafkaProducer(name string, hosts []string, config *sarama.Config) error {
 	syncProducer := &SyncProducer{}
 	syncProducer.Name = name
@@ -124,6 +126,7 @@ func InitSyncKafkaProducer(name string, hosts []string, config *sarama.Config) e
 	if producer, err := sarama.NewSyncProducer(hosts, config); err != nil {
 		return errors.New(fmt.Sprintf("创建生产者失败: %v", err))
 	} else {
+		// 3次失败 → 熔断 → 2秒后半开 → 成功恢复
 		syncProducer.Breaker = breaker.New(3, 1, 2*time.Second)
 		syncProducer.ReConnect = make(chan bool)
 		syncProducer.SyncProducer = &producer
@@ -138,6 +141,7 @@ func InitSyncKafkaProducer(name string, hosts []string, config *sarama.Config) e
 	return nil
 }
 
+// 初始化异步生产者
 func InitAsyncKafkaProducer(name string, hosts []string, config *sarama.Config) error {
 	asyncProducer := &AsyncProducer{}
 	asyncProducer.Name = name
