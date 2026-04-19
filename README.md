@@ -112,86 +112,86 @@ graph LR
 <tbody>
 <tr>
 <td rowspan="3" align="center"><strong>🗄️ 存储</strong></td>
-<td>🐬 MySQL</td>
+<td><img src="https://img.shields.io/badge/MySQL-Gorm-4479A1?style=flat-square&logo=mysql&logoColor=white"/></td>
 <td><code>db</code></td>
 <td>Gorm 封装，多客户端管理，连接池配置</td>
 </tr>
 <tr>
-<td>🔴 Redis</td>
+<td><img src="https://img.shields.io/badge/Redis-go--redis-DC382D?style=flat-square&logo=redis&logoColor=white"/></td>
 <td><code>cache</code> / <code>redis</code></td>
 <td>go-redis 封装，Bitmap，慢查询追踪，多客户端</td>
 </tr>
 <tr>
-<td>🍃 MongoDB</td>
+<td><img src="https://img.shields.io/badge/MongoDB-4.x+-47A248?style=flat-square&logo=mongodb&logoColor=white"/></td>
 <td><code>nosql</code></td>
 <td>mongo-driver 封装，连接池与多客户端管理</td>
 </tr>
 <tr>
 <td align="center"><strong>🔍 搜索</strong></td>
-<td>🟡 Elasticsearch</td>
+<td><img src="https://img.shields.io/badge/Elasticsearch-8.x-005571?style=flat-square&logo=elasticsearch&logoColor=white"/></td>
 <td><code>es</code></td>
 <td>BulkProcessor 批量写入、完整 CRUD、索引管理、版本控制、ES8 HTTPS</td>
 </tr>
 <tr>
 <td align="center"><strong>📨 消息队列</strong></td>
-<td>⬛ Kafka</td>
+<td><img src="https://img.shields.io/badge/Kafka-IBM%2FSarama-231F20?style=flat-square&logo=apache-kafka&logoColor=white"/></td>
 <td><code>mq</code> / <code>kafka</code></td>
 <td>Consumer Group、同步/异步 Producer、消息处理回调</td>
 </tr>
 <tr>
 <td rowspan="5" align="center"><strong>⚙️ 基础能力</strong></td>
-<td>📋 日志库</td>
+<td><img src="https://img.shields.io/badge/Zap-Lumberjack-FF6C37?style=flat-square&logo=uber&logoColor=white"/></td>
 <td><code>logger</code></td>
 <td>Zap + Lumberjack，文件轮转，级别分文件，自定义格式</td>
 </tr>
 <tr>
-<td>🛑 优雅关闭</td>
+<td><img src="https://img.shields.io/badge/shutdown-Hook-555555?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>shutdown</code></td>
 <td>多钩子注册，SIGQUIT/SIGINT/SIGTERM 信号处理</td>
 </tr>
 <tr>
-<td>🚀 协程池</td>
+<td><img src="https://img.shields.io/badge/routine-Pool-00ADD8?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>routine</code></td>
 <td>高性能 Goroutine Pool，控制并发数，避免泄露</td>
 </tr>
 <tr>
-<td>🌐 HTTP 客户端</td>
+<td><img src="https://img.shields.io/badge/httpclient-HTTP-0052CC?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>httpclient</code></td>
 <td>重试策略，超时控制，链式调用</td>
 </tr>
 <tr>
-<td>⚠️ 错误处理</td>
+<td><img src="https://img.shields.io/badge/errors-Stack-FF4444?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>errors</code></td>
 <td>统一错误码，堆栈信息追踪</td>
 </tr>
 <tr>
 <td rowspan="6" align="center"><strong>🔧 工具集</strong></td>
-<td>🔑 接口签名</td>
+<td><img src="https://img.shields.io/badge/sign-HMAC-6C4AB6?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>sign</code></td>
 <td>HMAC 签名校验封装</td>
 </tr>
 <tr>
-<td>✂️ 字符串工具</td>
+<td><img src="https://img.shields.io/badge/strutil-String-555555?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>strutil</code></td>
 <td>常用字符串操作集</td>
 </tr>
 <tr>
-<td>⏰ 时间工具</td>
+<td><img src="https://img.shields.io/badge/timeutil-Time-555555?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>timeutil</code></td>
 <td>时间格式化与操作集</td>
 </tr>
 <tr>
-<td>🔗 链路追踪</td>
+<td><img src="https://img.shields.io/badge/trace-Trace-555555?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>trace</code></td>
 <td>慢查询追踪与日志记录</td>
 </tr>
 <tr>
-<td>📦 压缩</td>
+<td><img src="https://img.shields.io/badge/compression-Gzip-555555?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>compression</code></td>
 <td>Gzip 压缩/解压封装</td>
 </tr>
 <tr>
-<td>📁 文件操作</td>
+<td><img src="https://img.shields.io/badge/file-IO-555555?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>file</code></td>
 <td>文件读写工具封装</td>
 </tr>
