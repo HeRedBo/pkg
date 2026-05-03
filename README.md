@@ -2,7 +2,7 @@
 
 # pkg
 
-**Go-Search 核心基础设施库 — 16 个独立组件，对常用中间件与关键能力进行高度抽象与统一封装**
+**Go-Search 核心基础设施库 — 17 个独立组件，对常用中间件与关键能力进行高度抽象与统一封装**
 
 [![Go](https://img.shields.io/badge/Go-1.23-00ADD8?style=flat-square&logo=go)](https://golang.org)     [![Elasticsearch](https://img.shields.io/badge/Elasticsearch-8.x-005571?style=flat-square&logo=elasticsearch)](https://www.elastic.co)     [![Kafka](https://img.shields.io/badge/Kafka-Sarama-231F20?style=flat-square&logo=apache-kafka)](https://kafka.apache.org)     [![Redis](https://img.shields.io/badge/Redis-go--redis-DC382D?style=flat-square&logo=redis)](https://redis.io)     [![MySQL](https://img.shields.io/badge/MySQL-Gorm-4479A1?style=flat-square&logo=mysql)](https://gorm.io)     [![License](https://img.shields.io/badge/License-Apache--2.0-green?style=flat-square)](LICENSE)
 
@@ -22,7 +22,7 @@
 <td width="50%">
 
 #### 🧱 独立模块化
-16 个组件各自维护独立 `go.mod`，按需引入，不产生额外依赖，真正的"零侵入"
+17 个组件各自维护独立 `go.mod`，按需引入，不产生额外依赖，真正的"零侵入"
 
 </td>
 <td width="50%">
@@ -88,6 +88,7 @@ graph LR
         Routine[routine<br/>协程池]
         HTTP[httpclient<br/>HTTP客户端]
         Errors[errors<br/>错误处理]
+        Limiter[limiter<br/>限流器]
     end
 
     subgraph Utils[工具集]
@@ -139,7 +140,7 @@ graph LR
 <td>Consumer Group、同步/异步 Producer、消息处理回调</td>
 </tr>
 <tr>
-<td rowspan="5" align="center"><strong>⚙️ 基础能力</strong></td>
+<td rowspan="6" align="center"><strong>⚙️ 基础能力</strong></td>
 <td><img src="https://img.shields.io/badge/Zap-Lumberjack-FF6C37?style=flat-square&logo=uber&logoColor=white"/></td>
 <td><code>logger</code></td>
 <td>Zap + Lumberjack，文件轮转，级别分文件，自定义格式</td>
@@ -163,6 +164,11 @@ graph LR
 <td><img src="https://img.shields.io/badge/errors-Stack-FF4444?style=flat-square&logo=go&logoColor=white"/></td>
 <td><code>errors</code></td>
 <td>统一错误码，堆栈信息追踪</td>
+</tr>
+<tr>
+<td><img src="https://img.shields.io/badge/limiter-RateLimit-FF6600?style=flat-square&logo=go&logoColor=white"/></td>
+<td><code>limiter</code></td>
+<td>四种限流算法，单机/Redis 分布式，统一工厂模式</td>
 </tr>
 <tr>
 <td rowspan="6" align="center"><strong>🔧 工具集</strong></td>
@@ -251,6 +257,20 @@ graph LR
 
 </details>
 
+<details>
+<summary><strong>📌 限流器（limiter）</strong></summary>
+
+| 特性 | 说明 |
+| :--- | :--- |
+| 令牌桶 | 按速率生成令牌，允许突发流量，适合一般限流场景 |
+| 漏桶 | 固定速率漏水，平滑流量输出，适合流量整形场景 |
+| 固定窗口 | 时间窗口内计数，实现简单，存在窗口边界突刺问题 |
+| 滑动窗口 | 基于时间戳滑动，精度高于固定窗口，解决边界突刺 |
+| 单机 / Redis | 自动选择：传 Redis 客户端为分布式限流，传 nil 为单机限流 |
+| 统一工厂 | `NewLimiter()` 统一入口，算法 + 单机/Redis 自动路由 |
+
+</details>
+
 ---
 
 ## 🧩 项目结构
@@ -266,6 +286,10 @@ pkg/
 ├── file/             # 文件操作工具
 ├── httpclient/       # HTTP 客户端（重试 / 超时控制 / 链式调用）
 ├── kafka/            # Kafka 扩展封装
+├── limiter/          # 限流器（令牌桶/漏桶/固定窗口/滑动窗口，单机+Redis）
+│   ├── local/        # 单机限流实现
+│   ├── redis/        # Redis 分布式限流实现
+│   └── test/         # 限流器单元测试
 ├── logger/           # Zap+Lumberjack 日志封装（文件轮转 / 级别分离）
 ├── mq/               # Kafka Producer/Consumer Group 封装
 ├── nosql/            # MongoDB 封装（连接池 / 多客户端）
@@ -302,6 +326,9 @@ go get github.com/HeRedBo/pkg/shutdown
 
 # 引入日志组件
 go get github.com/HeRedBo/pkg/logger
+
+# 引入限流器组件
+go get github.com/HeRedBo/pkg/limiter
 ```
 
 ---
