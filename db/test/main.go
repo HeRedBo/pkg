@@ -1,9 +1,9 @@
 package main
 
 import (
-	"github.com/HeRedBo/pkg/db"
 	"time"
 
+	"github.com/HeRedBo/pkg/db"
 	"github.com/gookit/goutil/dump"
 	"go.uber.org/zap"
 )
@@ -11,14 +11,14 @@ import (
 func initMysql() {
 	err := db.InitMysqlClient(db.DefaultClient, "root", "admin123", "localhost:3306", "demo")
 	if err != nil {
-		db.MysqltdLogger.Print("InitMysqlClient client error" + db.DefaultClient)
+		db.MysqlStdLogger.Print("InitMysqlClient client error" + db.DefaultClient)
 		return
 	}
-	db.MysqltdLogger.Print("connect mysql success ", zap.String("client", db.DefaultClient))
+	db.MysqlStdLogger.Print("connect mysql success ", zap.String("client", db.DefaultClient))
 	dump.P("connect mysql success ", zap.String("client", db.DefaultClient))
 	err = db.InitMysqlClientWithOptions(db.TxClient, "root", "admin123", "localhost:3306", "shop", db.WithPrepareStmt(false))
 	if err != nil {
-		db.MysqltdLogger.Print("InitMysqlClient client error" + db.TxClient)
+		db.MysqlStdLogger.Print("InitMysqlClient client error" + db.TxClient)
 		return
 	}
 }
@@ -47,10 +47,10 @@ func main() {
 
 	// 查看链接配置
 	sqlDB, _ := ormDB.DB()
-	db.MysqltdLogger.Printf("Stats : %+v", sqlDB.Stats())
+	db.MysqlStdLogger.Printf("Stats : %+v", sqlDB.Stats())
 	//建表
 	if err := ormDB.AutoMigrate(&User{}); err != nil {
-		db.MysqltdLogger.Print("AutoMigrate user error", err)
+		db.MysqlStdLogger.Print("AutoMigrate user error", err)
 	}
 
 	//自定义表名的另一种方式
@@ -65,14 +65,15 @@ func main() {
 		Password:      "",
 		RememberToken: "",
 	}
-	// if err := ormDB.Create(&user).Error; err != nil {
-	// 	//db.MysqltdLogger.Print("insert error", zap.Any("user", user))
-	// 	dump.Print("insert error", zap.Any("user", user))
-	// }
+	if err := ormDB.Create(&user).Error; err != nil {
+		//db.MysqltdLogger.Print("insert error", zap.Any("user", user))
+		dump.Print("insert error", zap.Any("user", user))
+	}
+	return
 
 	// 指定字段创建
 	if err := ormDB.Select("email").Create(&user).Error; err != nil {
-		db.MysqltdLogger.Print("insert error", zap.Any("user", user))
+		db.MysqlStdLogger.Print("insert error", zap.Any("user", user))
 	}
 	return
 
@@ -82,6 +83,6 @@ func main() {
 	//}
 	users := make([]User, 0)
 	ormDB.Where(&user).Find(&users)
-	db.MysqltdLogger.Printf("%+v", users)
+	db.MysqlStdLogger.Printf("%+v", users)
 	dump.Println(users)
 }

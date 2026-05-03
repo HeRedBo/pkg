@@ -3,25 +3,26 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/HeRedBo/pkg/mq"
 	"github.com/IBM/sarama"
 	"github.com/gookit/goutil/dump"
 	"go.uber.org/zap"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
-var (
-	hosts = []string{"127.0.0.1:9092"}
-	topic = "test-topic"
-)
+//var (
+//	hosts = []string{"127.0.0.1:9092"}
+//	topic = "test-topic"
+//)
 
-type Msg struct {
-	ID       int64  `json:"id"`
-	Name     string `json:"name"`
-	CreateAt int64  `json:"create_at"`
-}
+//type Msg struct {
+//	ID       int64  `json:"id"`
+//	Name     string `json:"name"`
+//	CreateAt int64  `json:"create_at"`
+//}
 
 func main() {
 	consumeMsg()
@@ -52,5 +53,6 @@ func msgHandler(message *sarama.ConsumerMessage) (bool, error) {
 		return true, nil
 	}
 	fmt.Println("msg : ", msg)
+	dump.P(msg)
 	return true, nil
 }

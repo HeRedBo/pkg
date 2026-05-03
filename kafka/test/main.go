@@ -3,18 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/HeRedBo/pkg/kafka"
-	"github.com/IBM/sarama"
 	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+
+	"github.com/HeRedBo/pkg/kafka"
+	"github.com/IBM/sarama"
 )
 
 // ================== 使用示例 ==================
 
-func main1() {
+func main() {
 	// 生产者示例
 	producer, err := kafka.NewKafkaProducer(kafka.ProducerConfig{
 		Brokers: []string{"host.docker.internal:9092"},
@@ -67,7 +68,7 @@ func main1() {
 }
 
 // 豆包使用示例
-func main() {
+func main01() {
 	// 生产者配置
 	brokers := []string{"host.docker.internal:9092"}
 	topic := "test-topic"

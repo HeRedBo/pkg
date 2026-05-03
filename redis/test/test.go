@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/HeRedBo/pkg/redis"
-	"github.com/gookit/goutil/dump"
 	"log"
 	"time"
+
+	"github.com/HeRedBo/pkg/redis"
+	"github.com/gookit/goutil/dump"
 )
 
 type UserTest struct {
@@ -19,7 +20,7 @@ func main() {
 	// 单机模式配置示例
 	singleConfig := redis.Config{
 		Addr:     "localhost:6379",
-		Password: "",
+		Password: "123456",
 		DB:       0,
 	}
 	// 集群模式配置示例
@@ -47,6 +48,7 @@ func main() {
 		fmt.Println("Failed to set key:", err)
 		return
 	}
+	return
 	//
 	//// 获取键对应的值
 	//result, err := client.Get(ctx, key)

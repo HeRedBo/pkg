@@ -3,10 +3,11 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/HeRedBo/pkg/mq"
 	"github.com/IBM/sarama"
 	"github.com/gookit/goutil/dump"
-	"time"
 )
 
 var (
