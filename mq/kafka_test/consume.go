@@ -37,7 +37,7 @@ func consumeMsg() {
 	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
 	select {
 	case s := <-signals:
-		mq.KafkaStdLogger.Println("kafka test receive system signal:", s)
+		fmt.Println("kafka test receive system signal:", s)
 		return
 	}
 }
