@@ -173,28 +173,6 @@ func TestApplyOptions_WithLogger(t *testing.T) {
 }
 
 // ─────────────────────────────────────────────
-// 测试 logf 辅助函数
-// ─────────────────────────────────────────────
-
-// TestLogf_FormatsMessage 验证 logf 将格式化字符串作为 Warn 输出
-func TestLogf_FormatsMessage(t *testing.T) {
-	zapLogger, logs := newObservedZap(zapcore.DebugLevel)
-	logf(zapLogger, "reconnect attempt %d for %s", 3, "my-producer")
-
-	if logs.Len() != 1 {
-		t.Fatalf("expected 1 log entry, got %d", logs.Len())
-	}
-	entry := logs.All()[0]
-	expected := "reconnect attempt 3 for my-producer"
-	if entry.Message != expected {
-		t.Errorf("expected %q, got %q", expected, entry.Message)
-	}
-	if entry.Level != zapcore.WarnLevel {
-		t.Errorf("expected Warn level, got %s", entry.Level)
-	}
-}
-
-// ─────────────────────────────────────────────
 // 测试 saramaZapLogger（sarama.StdLogger 适配器）
 // ─────────────────────────────────────────────
 

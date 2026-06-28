@@ -1,7 +1,6 @@
 package mq
 
 import (
-	"fmt"
 	"log"
 	"os"
 
@@ -105,7 +104,3 @@ func applyOptions(opts []Option) *mqOptions {
 	return o
 }
 
-// logf 兼容旧 stdLogger.Printf 风格的 Warn 输出，用于 keepConnect / check 等处
-func logf(l Logger, format string, args ...interface{}) {
-	l.Warn(fmt.Sprintf(format, args...))
-}

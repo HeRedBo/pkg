@@ -17,6 +17,7 @@ import (
 const (
 	KafkaConsumerConnected    string = "connected"
 	KafkaConsumerDisconnected string = "disconnected"
+	KafkaConsumerClosed       string = "closed"
 )
 
 type Consumer struct {
@@ -31,7 +32,8 @@ type Consumer struct {
 	breaker    *breaker.Breaker
 	reConnect  chan bool
 	statusLock sync.Mutex
-	exit       bool
+	exit       chan struct{} // 统一退出广播通道
+	closed     bool          // Close 已调用标记
 	cancel     context.CancelFunc
 	wg         sync.WaitGroup
 	log        Logger // 当前实例使用的 Logger
@@ -97,6 +99,7 @@ func StartKafkaConsumer(hosts, topics []string, groupID string, config *sarama.C
 		},
 		breaker:   breaker.New(3, 1, 3*time.Second),
 		reConnect: make(chan bool),
+		exit:      make(chan struct{}),
 		log:       getLogger(o.logger),
 	}
 
@@ -104,10 +107,28 @@ func StartKafkaConsumer(hosts, topics []string, groupID string, config *sarama.C
 		return nil, err
 	}
 
+	go consumer.watchSignals()
 	go consumer.keepConnect()
 	go consumer.consume()
 
 	return consumer, nil
+}
+
+// watchSignals 统一信号监听，收到信号后广播退出
+func (c *Consumer) watchSignals() {
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	select {
+	case <-signals:
+		c.statusLock.Lock()
+		if !c.closed {
+			c.status = KafkaConsumerClosed
+		}
+		c.statusLock.Unlock()
+		close(c.exit)
+	case <-c.exit:
+		// 已经退出（可能通过 Close 触发）
+	}
 }
 
 func (c *Consumer) connect() error {
@@ -116,52 +137,70 @@ func (c *Consumer) connect() error {
 	if err != nil {
 		return err
 	}
+	c.statusLock.Lock()
 	c.status = KafkaConsumerConnected
+	c.statusLock.Unlock()
 	c.log.Info("kafka consumer started", zap.String("groupID", c.groupID), zap.Strings("topics", c.topics))
 	return nil
 }
 
 func (c *Consumer) Close() error {
 	c.statusLock.Lock()
-	defer c.statusLock.Unlock()
-	c.exit = true
+	if c.closed {
+		c.statusLock.Unlock()
+		return nil
+	}
+	c.closed = true
+	close(c.exit) // 广播退出
 	if c.cancel != nil {
 		c.cancel()
 	}
+	c.statusLock.Unlock()
 	c.wg.Wait()
 	return c.consumer.Close()
 }
 
 func (c *Consumer) keepConnect() {
 	l := c.log
-	// 外层循环：持续监听重连信号，直到 exit 标志为 true
-	for !c.exit {
+	for {
 		select {
-		case <-c.reConnect: // 监听重连信号通道
-			// 1. 检查当前状态是否为已断开
-			if c.status != KafkaConsumerDisconnected {
-				continue // 如果已连接，跳过后续逻辑
+		case <-c.exit:
+			l.Debug("consumer keepConnect exited", zap.String("groupID", c.groupID))
+			return
+		case <-c.reConnect:
+			c.statusLock.Lock()
+			closed := c.closed
+			disconnected := c.status == KafkaConsumerDisconnected
+			c.statusLock.Unlock()
+			if closed || !disconnected {
+				break
 			}
 			l.Warn("kafka consumer reconnecting", zap.String("groupID", c.groupID), zap.Strings("topics", c.topics))
-		breakLoop: // 标签：用于跳出内部重试循环
-			// 2. 内部重试循环：尝试重连直到成功或熔断器开启
+		breakLoop:
 			for {
-				// 2.1 通过熔断器执行连接操作
 				err := c.breaker.Run(func() error {
-					return c.connect() // 尝试连接 Kafka
+					return c.connect()
 				})
-				// 2.2 根据错误类型处理结果
 				switch err {
-				case nil: // 成功连接
-					go c.consume()  // 启动消息消费协程
-					break breakLoop // 跳出内部重试循环
-				case breaker.ErrBreakerOpen: // 熔断器开启（频繁失败）
+				case nil:
+					go c.consume()
+					break breakLoop
+				case breaker.ErrBreakerOpen:
 					l.Warn("kafka consumer breaker open, will retry after 5s",
 						zap.String("groupID", c.groupID))
-					// 5秒后重新触发重连信号
-					time.AfterFunc(5*time.Second, func() { c.reConnect <- true })
-					break breakLoop // 跳出内部重试循环
-				default: // 其他错误（如网络问题）
+					c.statusLock.Lock()
+					shouldRetry := c.status == KafkaConsumerDisconnected && !c.closed
+					c.statusLock.Unlock()
+					if shouldRetry {
+						time.AfterFunc(5*time.Second, func() {
+							select {
+							case c.reConnect <- true:
+							case <-c.exit:
+							}
+						})
+					}
+					break breakLoop
+				default:
 					l.Error("kafka consumer connect error", zap.String("groupID", c.groupID), zap.Error(err))
 				}
 			}
@@ -171,44 +210,48 @@ func (c *Consumer) keepConnect() {
 
 func (c *Consumer) consume() {
 	l := c.log
-	// 1. 创建可取消的上下文，用于控制消费者生命周期
+
+	// 重建 handler，防止 handler.ready 被重复 close
+	c.statusLock.Lock()
+	c.handler = &consumerGroupHandler{
+		ready:    make(chan bool),
+		callback: c.handler.callback,
+	}
+	handler := c.handler
+	c.statusLock.Unlock()
+
 	ctx, cancel := context.WithCancel(context.Background())
-	c.cancel = cancel // 保存 cancel 函数，供外部调用关闭
-	// 2. 启动一个协程处理消息消费
+
+	c.statusLock.Lock()
+	c.cancel = cancel
+	c.statusLock.Unlock()
+
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		for {
-			// 2.1 核心消费循环：调用 Kafka 的 Consume 方法
-			if err := c.consumer.Consume(ctx, c.topics, c.handler); err != nil {
-				// 2.1.1 如果是正常关闭错误，直接退出
+			if err := c.consumer.Consume(ctx, c.topics, handler); err != nil {
 				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
 					return
 				}
 				l.Error("kafka consumer error", zap.String("groupID", c.groupID), zap.Error(err))
-				// 2.1.2 处理其他错误（如网络中断）
 				c.handleConsumerError(err)
 			}
-
-			// 2.2 检查上下文是否已关闭，是则退出循环
 			if ctx.Err() != nil {
 				return
 			}
 		}
 	}()
-	// 3. 等待消费者组初始化完成（handler.Setup() 被调用）
-	<-c.handler.ready // 等待消费者组初始化完成
+	<-handler.ready
 	l.Info("kafka consumer ready", zap.String("groupID", c.groupID), zap.Strings("topics", c.topics))
-	// 4. 监听系统终止信号（SIGINT/SIGTERM）
-	sigterm := make(chan os.Signal, 1)
-	signal.Notify(sigterm, syscall.SIGINT, syscall.SIGTERM)
-	// 5. 使用 select 监听两个事件通道
+
+	// 使用 exit 通道替代独立信号监听
 	select {
-	case <-ctx.Done(): // 5.1 上下文被取消（如主动调用 Close()）
+	case <-ctx.Done():
 		l.Info("kafka consumer context closed", zap.String("groupID", c.groupID))
-	case <-sigterm: // 阻塞直到接收到终止信号
-		l.Warn("kafka consumer received termination signal", zap.String("groupID", c.groupID))
-		cancel() // 触发上下文取消
+	case <-c.exit:
+		l.Warn("kafka consumer received exit signal", zap.String("groupID", c.groupID))
+		cancel()
 	}
 }
 
@@ -219,7 +262,10 @@ func (c *Consumer) handleConsumerError(err error) {
 			c.status = KafkaConsumerDisconnected
 			c.log.Warn("kafka consumer disconnected, triggering reconnect",
 				zap.String("groupID", c.groupID), zap.Error(err))
-			c.reConnect <- true
+			select {
+			case c.reConnect <- true:
+			case <-c.exit:
+			}
 		}
 		c.statusLock.Unlock()
 	}
