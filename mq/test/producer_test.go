@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HeRedBo/pkg/mq"
+	"github.com/HeRedBo/pkg/mq/zapx"
 	"github.com/IBM/sarama"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -134,7 +135,7 @@ func TestSyncProducer_WithZapLogger(t *testing.T) {
 	zapL, logs := newObserverZap(zapcore.DebugLevel)
 
 	name := syncProducer + "_zap"
-	err := mq.InitSyncKafkaProducer(name, testHosts, nil, mq.WithLogger(zapL))
+	err := mq.InitSyncKafkaProducer(name, testHosts, nil, mq.WithLogger(zapx.NewZapLogger(zapL)))
 	if err != nil {
 		t.Fatalf("InitSyncKafkaProducer with zap logger failed: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestAsyncProducer_WithZapLogger(t *testing.T) {
 	zapL, logs := newObserverZap(zapcore.DebugLevel)
 
 	name := asyncProducer + "_zap"
-	err := mq.InitAsyncKafkaProducer(name, testHosts, nil, mq.WithLogger(zapL))
+	err := mq.InitAsyncKafkaProducer(name, testHosts, nil, mq.WithLogger(zapx.NewZapLogger(zapL)))
 	if err != nil {
 		t.Fatalf("InitAsyncKafkaProducer with zap logger failed: %v", err)
 	}

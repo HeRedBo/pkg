@@ -11,7 +11,6 @@ import (
 
 	"github.com/IBM/sarama"
 	"github.com/eapache/go-resiliency/breaker"
-	"go.uber.org/zap"
 )
 
 const (
@@ -103,6 +102,8 @@ func StartKafkaConsumer(hosts, topics []string, groupID string, config *sarama.C
 		log:       getLogger(o.logger),
 	}
 
+	SetSaramaLogger(consumer.log) // 显式同步 Sarama 日志
+
 	if err := consumer.connect(); err != nil {
 		return nil, err
 	}
@@ -140,7 +141,7 @@ func (c *Consumer) connect() error {
 	c.statusLock.Lock()
 	c.status = KafkaConsumerConnected
 	c.statusLock.Unlock()
-	c.log.Info("kafka consumer started", zap.String("groupID", c.groupID), zap.Strings("topics", c.topics))
+	c.log.Info("kafka consumer started", Field("groupID", c.groupID), Field("topics", c.topics))
 	return nil
 }
 
@@ -165,7 +166,7 @@ func (c *Consumer) keepConnect() {
 	for {
 		select {
 		case <-c.exit:
-			l.Debug("consumer keepConnect exited", zap.String("groupID", c.groupID))
+			l.Debug("consumer keepConnect exited", Field("groupID", c.groupID))
 			return
 		case <-c.reConnect:
 			c.statusLock.Lock()
@@ -175,7 +176,7 @@ func (c *Consumer) keepConnect() {
 			if closed || !disconnected {
 				break
 			}
-			l.Warn("kafka consumer reconnecting", zap.String("groupID", c.groupID), zap.Strings("topics", c.topics))
+			l.Warn("kafka consumer reconnecting", Field("groupID", c.groupID), Field("topics", c.topics))
 		breakLoop:
 			for {
 				err := c.breaker.Run(func() error {
@@ -187,7 +188,7 @@ func (c *Consumer) keepConnect() {
 					break breakLoop
 				case breaker.ErrBreakerOpen:
 					l.Warn("kafka consumer breaker open, will retry after 5s",
-						zap.String("groupID", c.groupID))
+						Field("groupID", c.groupID))
 					c.statusLock.Lock()
 					shouldRetry := c.status == KafkaConsumerDisconnected && !c.closed
 					c.statusLock.Unlock()
@@ -201,7 +202,7 @@ func (c *Consumer) keepConnect() {
 					}
 					break breakLoop
 				default:
-					l.Error("kafka consumer connect error", zap.String("groupID", c.groupID), zap.Error(err))
+					l.Error("kafka consumer connect error", Field("groupID", c.groupID), ErrField(err))
 				}
 			}
 		}
@@ -234,7 +235,7 @@ func (c *Consumer) consume() {
 				if errors.Is(err, sarama.ErrClosedConsumerGroup) {
 					return
 				}
-				l.Error("kafka consumer error", zap.String("groupID", c.groupID), zap.Error(err))
+				l.Error("kafka consumer error", Field("groupID", c.groupID), ErrField(err))
 				c.handleConsumerError(err)
 			}
 			if ctx.Err() != nil {
@@ -243,14 +244,14 @@ func (c *Consumer) consume() {
 		}
 	}()
 	<-handler.ready
-	l.Info("kafka consumer ready", zap.String("groupID", c.groupID), zap.Strings("topics", c.topics))
+	l.Info("kafka consumer ready", Field("groupID", c.groupID), Field("topics", c.topics))
 
 	// 使用 exit 通道替代独立信号监听
 	select {
 	case <-ctx.Done():
-		l.Info("kafka consumer context closed", zap.String("groupID", c.groupID))
+		l.Info("kafka consumer context closed", Field("groupID", c.groupID))
 	case <-c.exit:
-		l.Warn("kafka consumer received exit signal", zap.String("groupID", c.groupID))
+		l.Warn("kafka consumer received exit signal", Field("groupID", c.groupID))
 		cancel()
 	}
 }
@@ -261,7 +262,7 @@ func (c *Consumer) handleConsumerError(err error) {
 		if c.status == KafkaConsumerConnected {
 			c.status = KafkaConsumerDisconnected
 			c.log.Warn("kafka consumer disconnected, triggering reconnect",
-				zap.String("groupID", c.groupID), zap.Error(err))
+				Field("groupID", c.groupID), ErrField(err))
 			select {
 			case c.reConnect <- true:
 			case <-c.exit:

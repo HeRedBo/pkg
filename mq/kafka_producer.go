@@ -11,7 +11,6 @@ import (
 
 	"github.com/IBM/sarama"
 	"github.com/eapache/go-resiliency/breaker"
-	"go.uber.org/zap"
 )
 
 // KafkaProducer 生产者基础结构
@@ -133,7 +132,7 @@ func (kp *KafkaProducer) baseKeepConnect(connect connectFunc, typeName string) {
 	for {
 		select {
 		case <-kp.exit:
-			l.Debug("baseKeepConnect exited", zap.String("name", kp.Name), zap.String("type", typeName))
+			l.Debug("baseKeepConnect exited", Field("name", kp.Name), Field("type", typeName))
 			return
 		case <-kp.ReConnect:
 			kp.StatusLock.Lock()
@@ -143,16 +142,16 @@ func (kp *KafkaProducer) baseKeepConnect(connect connectFunc, typeName string) {
 			if closed || !disconnected {
 				break
 			}
-			l.Warn("kafka reconnecting", zap.String("name", kp.Name), zap.String("type", typeName))
+			l.Warn("kafka reconnecting", Field("name", kp.Name), Field("type", typeName))
 		reconnectLoop:
 			for {
 				err := kp.Breaker.Run(connect)
 				switch err {
 				case nil:
-					l.Info("kafka reconnected", zap.String("name", kp.Name), zap.String("type", typeName))
+					l.Info("kafka reconnected", Field("name", kp.Name), Field("type", typeName))
 					break reconnectLoop
 				case breaker.ErrBreakerOpen:
-					l.Warn("kafka connect fail, breaker is open", zap.String("name", kp.Name))
+					l.Warn("kafka connect fail, breaker is open", Field("name", kp.Name))
 					kp.StatusLock.Lock()
 					disconnected := kp.Status == KafkaProducerDisconnected && !kp.isClosed()
 					kp.StatusLock.Unlock()
@@ -166,7 +165,7 @@ func (kp *KafkaProducer) baseKeepConnect(connect connectFunc, typeName string) {
 					}
 					break reconnectLoop
 				default:
-					l.Error("kafka reconnect error", zap.String("name", kp.Name), zap.String("type", typeName), zap.Error(err))
+					l.Error("kafka reconnect error", Field("name", kp.Name), Field("type", typeName), ErrField(err))
 				}
 			}
 		}
@@ -212,6 +211,7 @@ func InitSyncKafkaProducer(name string, hosts []string, config *sarama.Config, o
 	syncProducer.Hosts = hosts
 	syncProducer.Status = KafkaProducerDisconnected
 	syncProducer.log = getLogger(o.logger)
+	SetSaramaLogger(syncProducer.log) // 显式同步 Sarama 日志
 	syncProducer.exit = make(chan struct{})
 	if config == nil {
 		config = getDefaultProducerConfig(name)
@@ -229,7 +229,7 @@ func InitSyncKafkaProducer(name string, hosts []string, config *sarama.Config, o
 		go syncProducer.watchSignals()
 		// 断开重连
 		go syncProducer.baseKeepConnect(syncProducer.syncConnect, "sync")
-		syncProducer.log.Info("SyncKafkaProducer connected", zap.String("name", name))
+		syncProducer.log.Info("SyncKafkaProducer connected", Field("name", name))
 	}
 	syncProducersMu.Lock()
 	KafkaSyncProducers[name] = syncProducer
@@ -246,6 +246,7 @@ func InitAsyncKafkaProducer(name string, hosts []string, config *sarama.Config, 
 	asyncProducer.Hosts = hosts
 	asyncProducer.Status = KafkaProducerDisconnected
 	asyncProducer.log = getLogger(o.logger)
+	SetSaramaLogger(asyncProducer.log) // 显式同步 Sarama 日志
 	asyncProducer.exit = make(chan struct{})
 	if config == nil {
 		config = getDefaultProducerConfig(name)
@@ -264,7 +265,7 @@ func InitAsyncKafkaProducer(name string, hosts []string, config *sarama.Config, 
 		go asyncProducer.baseKeepConnect(asyncProducer.asyncConnect, "async")
 		// 异步结果收集
 		go asyncProducer.check()
-		asyncProducer.log.Info("AsyncKafkaProducer connected", zap.String("name", name))
+		asyncProducer.log.Info("AsyncKafkaProducer connected", Field("name", name))
 	}
 	asyncProducersMu.Lock()
 	KafkaAsyncProducers[name] = asyncProducer
@@ -280,7 +281,7 @@ func GetKafkaSyncProducer(name string) *SyncProducer {
 		return producer
 	}
 	getLogger(nil).Warn("InitSyncKafkaProducer must be called before GetKafkaSyncProducer",
-		zap.String("name", name))
+		Field("name", name))
 	return nil
 }
 
@@ -292,7 +293,7 @@ func GetKafkaAsyncProducer(name string) *AsyncProducer {
 		return producer
 	}
 	getLogger(nil).Warn("InitAsyncKafkaProducer must be called before GetKafkaAsyncProducer",
-		zap.String("name", name))
+		Field("name", name))
 	return nil
 }
 
@@ -300,7 +301,7 @@ func GetKafkaAsyncProducer(name string) *AsyncProducer {
 func (ap *AsyncProducer) check() {
 	l := ap.log
 	defer func() {
-		l.Debug("asyncProducer check exited", zap.String("name", ap.Name))
+		l.Debug("asyncProducer check exited", Field("name", ap.Name))
 	}()
 	for {
 		ap.StatusLock.Lock()
@@ -325,9 +326,9 @@ func (ap *AsyncProducer) check() {
 			return
 		case msg := <-(*ap.AsyncProducer).Successes():
 			l.Debug("async produce message success",
-				zap.String("topic", msg.Topic),
-				zap.Int32("partition", msg.Partition),
-				zap.Int64("offset", msg.Offset))
+				Field("topic", msg.Topic),
+				Field("partition", msg.Partition),
+				Field("offset", msg.Offset))
 		case err := <-(*ap.AsyncProducer).Errors():
 			if errors.Is(err, sarama.ErrOutOfBrokers) || errors.Is(err, sarama.ErrNotConnected) {
 				// 先加锁修改状态，再释放锁后发送信号，避免死锁
@@ -345,7 +346,7 @@ func (ap *AsyncProducer) check() {
 				}
 			} else {
 				l.Error("async produce message error",
-					zap.String("name", ap.Name), zap.Error(err.Err))
+					Field("name", ap.Name), ErrField(err.Err))
 			}
 		}
 	}
@@ -375,7 +376,7 @@ func (syncProducer *SyncProducer) SendMessages(msgs []*sarama.ProducerMessage) (
 			}
 		}
 		syncProducer.log.Error("syncProducer sendMessages error",
-			zap.String("name", syncProducer.Name), zap.Error(err.Err))
+			Field("name", syncProducer.Name), ErrField(err.Err))
 	}
 	return
 }
@@ -391,9 +392,9 @@ func (syncProducer *SyncProducer) Send(msg *sarama.ProducerMessage) (partition i
 		return
 	}
 	syncProducer.log.Error("syncProducer send error",
-		zap.String("name", syncProducer.Name),
-		zap.String("topic", msg.Topic),
-		zap.Error(err))
+		Field("name", syncProducer.Name),
+		Field("topic", msg.Topic),
+		ErrField(err))
 	if errors.Is(err, sarama.ErrBrokerNotAvailable) {
 		// 先加锁修改状态，再释放锁后发送信号，避免死锁
 		syncProducer.StatusLock.Lock()

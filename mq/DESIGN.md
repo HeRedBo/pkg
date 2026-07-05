@@ -52,6 +52,8 @@ graph LR
     MQ --> BREAKER[eapache/go-resiliency/breaker]
     MQ --> ZAP[uber-go/zap]
     MQ --> GOOUTIL[gookit/goutil]
+    MQ --> LOGRUS[sirupsen/logrus]
+    MQ --> LUMBERJACK[natefinch/lumberjack]
 ```
 
 ---
@@ -64,9 +66,12 @@ graph LR
 |------|------|
 | `kafka_producer.go` | 生产者核心：`KafkaProducer` 基础结构、`SyncProducer` / `AsyncProducer` 初始化与消息发送、自动重连、信号监听、Close |
 | `kafka_consumer.go` | 消费者核心：`Consumer` 结构、消费者组初始化、消息消费循环、自动重连、信号监听、Close |
-| `logger.go` | 日志系统：`Logger` 接口定义、全局/默认 Logger、`Option` 模式（`WithLogger`）、优先级解析 `getLogger` |
+| `logger.go` | 日志系统：`Logger` 接口定义、`LogField` 日志字段、全局/默认 Logger、`Option` 模式（`WithLogger`）、优先级解析 `getLogger` |
+| `log_config.go` | 日志配置驱动：`LogConfig` 配置结构、`InitLogger` 工厂函数（console/file/rotation 三种模式）、`zapLoggerWrapper` 内部适配器 |
 | `sarama_logger.go` | Sarama 日志适配器：`saramaZapLogger` 将 `sarama.StdLogger` 桥接到 `mq.Logger` |
 | `mq_logger_test.go` | 日志系统单元测试：覆盖默认日志、全局注入、Option 优先级、适配器行为等 |
+| `zapx/zap_adapter.go` | Zap 适配器：将 `*zap.Logger` 适配为 `mq.Logger` 接口 |
+| `logrusx/logrus_adapter.go` | Logrus 适配器：将 `*logrus.Logger` 适配为 `mq.Logger` 接口 |
 
 ### 核心结构体和接口
 
@@ -116,12 +121,25 @@ type Consumer struct {
     log        Logger
 }
 
+// 日志字段（框架无关，不绑定任何第三方日志库）
+type LogField struct {
+    Key   string
+    Value interface{}
+}
+
+// Field 创建日志字段
+func Field(key string, val interface{}) LogField
+
+// ErrField 创建错误日志字段
+func ErrField(err error) LogField
+
 // 日志接口
 type Logger interface {
-    Info(msg string, fields ...zap.Field)
-    Warn(msg string, fields ...zap.Field)
-    Error(msg string, fields ...zap.Field)
-    Debug(msg string, fields ...zap.Field)
+    Info(msg string, fields ...LogField)
+    Warn(msg string, fields ...LogField)
+    Error(msg string, fields ...LogField)
+    Debug(msg string, fields ...LogField)
+    WithFields(fields ...LogField) Logger
 }
 
 // 消费者回调
@@ -195,7 +213,7 @@ func WithLogger(l Logger) Option {
 }
 
 // 使用示例
-mq.InitSyncKafkaProducer("name", hosts, nil, mq.WithLogger(zapLogger))
+mq.InitSyncKafkaProducer("name", hosts, nil, mq.WithLogger(myLogger))
 ```
 
 ### 4.3 熔断器模式（Circuit Breaker）
@@ -317,29 +335,49 @@ func (h *consumerGroupHandler) ConsumeClaim(session sarama.ConsumerGroupSession,
 ### 4.6 适配器模式（Adapter Pattern）
 
 **在哪里使用：**
-- `saramaZapLogger` 结构体实现 `sarama.StdLogger` 接口
+- `saramaLogger` 结构体实现 `sarama.StdLogger` 接口
 - `SetSaramaLogger(l Logger)` 函数
+- `zapx.ZapLogger` 将 `*zap.Logger` 适配为 `mq.Logger`
+- `logrusx.LogrusLogger` 将 `*logrus.Logger` 适配为 `mq.Logger`
 
 **解决什么问题：**
-sarama 内部使用 `sarama.StdLogger`（接口含 `Print`/`Printf`/`Println`）输出日志。通过适配器将 sarama 的底层日志（分区重平衡、连接建立、offset 提交等）统一桥接到 `mq.Logger` → Zap → 文件/ELK。
+1. sarama 内部使用 `sarama.StdLogger`（接口含 `Print`/`Printf`/`Println`）输出日志。通过适配器将 sarama 的底层日志统一桥接到 `mq.Logger`
+2. `*zap.Logger` 和 `*logrus.Logger` 不再直接满足 `mq.Logger` 接口（因为接口使用框架无关的 `LogField`），需要通过适配器包装
 
 **如何工作：**
 
 ```go
-type saramaZapLogger struct {
+// sarama 日志适配器
+type saramaLogger struct {
     l Logger
 }
 
-// 将 sarama.StdLogger 的三个方法全部代理到 mq.Logger.Debug
-func (s *saramaZapLogger) Print(v ...interface{})  { s.l.Debug(fmt.Sprint(v...)) }
-func (s *saramaZapLogger) Printf(format string, v ...interface{}) {
+func (s *saramaLogger) Print(v ...interface{})  { s.l.Debug(fmt.Sprint(v...)) }
+func (s *saramaLogger) Printf(format string, v ...interface{}) {
     s.l.Debug(fmt.Sprintf(format, v...))
 }
-func (s *saramaZapLogger) Println(v ...interface{}) { s.l.Debug(fmt.Sprint(v...)) }
+func (s *saramaLogger) Println(v ...interface{}) { s.l.Debug(fmt.Sprint(v...)) }
 
 // 注入
-mq.SetSaramaLogger(zapLogger)
-sarama.Logger = &saramaZapLogger{l: zapLogger}
+mq.SetSaramaLogger(myLogger)
+```
+
+```go
+// zap 适配器使用示例
+import "github.com/HeRedBo/pkg/mq/zapx"
+
+zapLogger, _ := zap.NewProduction()
+mqLogger := zapx.NewZapLogger(zapLogger) // *zap.Logger → mq.Logger
+mq.SetLogger(mqLogger)
+```
+
+```go
+// logrus 适配器使用示例
+import "github.com/HeRedBo/pkg/mq/logrusx"
+
+logrusLogger := logrus.New()
+mqLogger := logrusx.NewLogrusLogger(logrusLogger) // *logrus.Logger → mq.Logger
+mq.SetLogger(mqLogger)
 ```
 
 ---
@@ -490,6 +528,61 @@ func getLogger(opt Logger) Logger {
     }
     return stdDefault       // 3. 默认控制台
 }
+```
+
+### LogConfig 配置驱动初始化
+
+通过 `LogConfig` 结构和 `InitLogger` 工厂函数，可以基于配置快速创建 Logger，无需手动构建底层日志库：
+
+```go
+// 控制台日志（开发环境）
+l, _ := mq.InitLogger(&mq.LogConfig{Mode: "console", Level: "debug"})
+mq.SetLogger(l)
+
+// 文件日志（生产环境）
+l, _ := mq.InitLogger(&mq.LogConfig{Mode: "file", Path: "/var/log/app/kafka.log", Level: "info"})
+mq.SetLogger(l)
+
+// 文件日志 + 自动轮转
+l, _ := mq.InitLogger(&mq.LogConfig{
+    Mode:       "file",
+    Path:       "/var/log/app/kafka.log",
+    Level:      "info",
+    Rotation:   true,
+    MaxSize:    100,  // 单个文件最大 MB
+    MaxAge:     30,   // 保留最大天数
+    MaxBackups: 5,    // 保留文件最大数量
+    Compress:   true, // 压缩旧日志
+})
+mq.SetLogger(l)
+```
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `Mode` | string | `"console"` | 日志模式：`"console"` 或 `"file"` |
+| `Path` | string | - | 日志文件路径（`Mode=file` 时使用） |
+| `Level` | string | `"info"` | 日志级别：`"debug"`, `"info"`, `"warn"`, `"error"` |
+| `Rotation` | bool | `false` | 是否启用日志轮转（需配合 `Mode=file`） |
+| `MaxSize` | int | 100 | 单个日志文件最大 MB |
+| `MaxAge` | int | 30 | 日志保留最大天数 |
+| `MaxBackups` | int | 5 | 保留日志文件最大数量 |
+| `Compress` | bool | `false` | 是否压缩旧日志 |
+| `KeepDays` | int | 0 | 日志保留天数（覆盖 MaxAge） |
+
+### WithFields 预绑定字段
+
+`WithFields` 方法返回一个新的 Logger，其中预绑定了指定字段。后续所有日志调用都会自动携带这些字段，适合为特定组件添加模块、实例名等上下文信息：
+
+```go
+// 预绑定模块字段
+moduleLogger := logger.WithFields(mq.Field("module", "kafka"))
+moduleLogger.Info("producer started") // 自动携带 module=kafka
+
+// 链式调用
+l := logger.
+    WithFields(mq.Field("module", "kafka")).
+    WithFields(mq.Field("instance", "producer-1"))
+l.Info("connected") // 同时携带 module=kafka 和 instance=producer-1
 ```
 
 ---

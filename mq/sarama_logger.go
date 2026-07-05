@@ -9,34 +9,34 @@ import (
 )
 
 // ─────────────────────────────────────────────
-// saramaZapLogger：将 sarama.StdLogger 桥接到 mq.Logger
+// saramaLogger：将 sarama.StdLogger 桥接到 mq.Logger
 //
 // sarama 内部（分区重平衡、连接建立、offset 提交等）会调用 sarama.Logger
-// 通过此适配器，sarama 的底层日志也能统一走 mq.Logger → Zap → 文件/ELK
+// 通过此适配器，sarama 的底层日志也能统一走 mq.Logger → 日志后端
 //
 // 使用方式（在业务项目初始化时调用一次）：
 //
-//	mq.SetSaramaLogger(yourZapLogger)  // 注入后 sarama 内部日志走 Zap
-//	mq.SetSaramaLogger(nil)            // 恢复 sarama 默认丢弃输出
+//	mq.SetSaramaLogger(yourLogger)  // 注入后 sarama 内部日志走统一日志
+//	mq.SetSaramaLogger(nil)         // 恢复 sarama 默认丢弃输出
 // ─────────────────────────────────────────────
 
-// saramaZapLogger 实现 sarama.StdLogger，内部代理到 mq.Logger
-type saramaZapLogger struct {
+// saramaLogger 实现 sarama.StdLogger，内部代理到 mq.Logger
+type saramaLogger struct {
 	l Logger
 }
 
 // Print 实现 sarama.StdLogger
-func (s *saramaZapLogger) Print(v ...interface{}) {
+func (s *saramaLogger) Print(v ...interface{}) {
 	s.l.Debug(fmt.Sprint(v...))
 }
 
 // Printf 实现 sarama.StdLogger
-func (s *saramaZapLogger) Printf(format string, v ...interface{}) {
+func (s *saramaLogger) Printf(format string, v ...interface{}) {
 	s.l.Debug(fmt.Sprintf(format, v...))
 }
 
 // Println 实现 sarama.StdLogger
-func (s *saramaZapLogger) Println(v ...interface{}) {
+func (s *saramaLogger) Println(v ...interface{}) {
 	s.l.Debug(fmt.Sprint(v...))
 }
 
@@ -50,5 +50,5 @@ func SetSaramaLogger(l Logger) {
 		sarama.Logger = log.New(io.Discard, "[Sarama] ", log.LstdFlags)
 		return
 	}
-	sarama.Logger = &saramaZapLogger{l: l}
+	sarama.Logger = &saramaLogger{l: l}
 }

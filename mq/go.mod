@@ -5,7 +5,9 @@ go 1.23.2
 require (
 	github.com/IBM/sarama v1.45.1
 	github.com/eapache/go-resiliency v1.7.0
+	github.com/sirupsen/logrus v1.9.4
 	go.uber.org/zap v1.27.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (
@@ -28,4 +30,5 @@ require (
 	golang.org/x/crypto v0.36.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sync v0.12.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
 )

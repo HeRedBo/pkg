@@ -56,20 +56,36 @@ func newFileLogger(logPath string) (*fileLogger, error) {
 	}, nil
 }
 
-func (fl *fileLogger) Info(msg string, fields ...zap.Field) {
-	fl.logger.Info(msg, fields...)
+func (fl *fileLogger) Info(msg string, fields ...mq.LogField) {
+	fl.logger.Info(msg, toZapFields(fields)...)
 }
 
-func (fl *fileLogger) Warn(msg string, fields ...zap.Field) {
-	fl.logger.Warn(msg, fields...)
+func (fl *fileLogger) Warn(msg string, fields ...mq.LogField) {
+	fl.logger.Warn(msg, toZapFields(fields)...)
 }
 
-func (fl *fileLogger) Error(msg string, fields ...zap.Field) {
-	fl.logger.Error(msg, fields...)
+func (fl *fileLogger) Error(msg string, fields ...mq.LogField) {
+	fl.logger.Error(msg, toZapFields(fields)...)
 }
 
-func (fl *fileLogger) Debug(msg string, fields ...zap.Field) {
-	fl.logger.Debug(msg, fields...)
+func (fl *fileLogger) Debug(msg string, fields ...mq.LogField) {
+	fl.logger.Debug(msg, toZapFields(fields)...)
+}
+
+func (fl *fileLogger) WithFields(fields ...mq.LogField) mq.Logger {
+	return &fileLogger{logger: fl.logger.With(toZapFields(fields)...)}
+}
+
+// toZapFields 将 mq.LogField 转换为 zap.Field
+func toZapFields(fields []mq.LogField) []zap.Field {
+	if len(fields) == 0 {
+		return nil
+	}
+	zf := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		zf[i] = zap.Any(f.Key, f.Value)
+	}
+	return zf
 }
 
 // Sync 刷新日志缓冲区（调用底层 zap.Sync）
@@ -101,7 +117,7 @@ func TestMqLoggerFileOutput(t *testing.T) {
 	})
 
 	// 写入测试日志
-	fl.Info("test info message", zap.String("key", "value"))
+	fl.Info("test info message", mq.Field("key", "value"))
 	fl.Warn("test warn message")
 	fl.Error("test error message")
 	fl.Debug("test debug message")

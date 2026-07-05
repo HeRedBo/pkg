@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/HeRedBo/pkg/mq"
+	"github.com/HeRedBo/pkg/mq/zapx"
 	"github.com/IBM/sarama"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -184,7 +185,7 @@ func TestProducerWithCustomLogger(t *testing.T) {
 	zapL, logs := newObserverZap(zapcore.DebugLevel)
 
 	const name = "test-sync-zap-producer"
-	err := mq.InitSyncKafkaProducer(name, testHosts, nil, mq.WithLogger(zapL))
+	err := mq.InitSyncKafkaProducer(name, testHosts, nil, mq.WithLogger(zapx.NewZapLogger(zapL)))
 	if err != nil {
 		t.Fatalf("InitSyncKafkaProducer with zap logger failed: %v", err)
 	}

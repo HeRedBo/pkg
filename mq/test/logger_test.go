@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/HeRedBo/pkg/mq"
+	"github.com/HeRedBo/pkg/mq/zapx"
 	"github.com/IBM/sarama"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -24,7 +25,7 @@ import (
 // 全局 SetLogger 注入后，Init 的生产者日志应走注入的 Logger
 func TestLogger_GlobalSetLogger_ProducerUsesIt(t *testing.T) {
 	zapL, logs := newObserverZap(zapcore.DebugLevel)
-	mq.SetLogger(zapL)
+	mq.SetLogger(zapx.NewZapLogger(zapL))
 	t.Cleanup(func() { mq.SetLogger(nil) })
 
 	const name = "logger-global-sync"
@@ -58,13 +59,13 @@ func TestLogger_GlobalSetLogger_ProducerUsesIt(t *testing.T) {
 // 全局 Logger 应该 0 条日志，Option Logger 应该有日志
 func TestLogger_WithLoggerOption_OverridesGlobal(t *testing.T) {
 	globalZap, globalLogs := newObserverZap(zapcore.DebugLevel)
-	mq.SetLogger(globalZap)
+	mq.SetLogger(zapx.NewZapLogger(globalZap))
 	t.Cleanup(func() { mq.SetLogger(nil) })
 
 	optionZap, optionLogs := newObserverZap(zapcore.DebugLevel)
 
 	const name = "logger-option-priority"
-	err := mq.InitSyncKafkaProducer(name, testHosts, nil, mq.WithLogger(optionZap))
+	err := mq.InitSyncKafkaProducer(name, testHosts, nil, mq.WithLogger(zapx.NewZapLogger(optionZap)))
 	if err != nil {
 		t.Fatalf("InitSyncKafkaProducer failed: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestLogger_WithLoggerOption_OverridesGlobal(t *testing.T) {
 // SetSaramaLogger 注入后，Sarama 内部初始化日志走 observer，验证桥接生效
 func TestLogger_SaramaZapLogger_Integration(t *testing.T) {
 	zapL, logs := newObserverZap(zapcore.DebugLevel)
-	mq.SetSaramaLogger(zapL)
+	mq.SetSaramaLogger(zapx.NewZapLogger(zapL))
 	t.Cleanup(func() { mq.SetSaramaLogger(nil) }) // 恢复 sarama 默认输出
 
 	const name = "logger-sarama-bridge"
@@ -187,7 +188,7 @@ func TestLogger_WriteToFile(t *testing.T) {
 	t.Cleanup(func() { _ = zapL.Sync() })
 
 	// 3. 注入到 mq 全局 Logger
-	mq.SetLogger(zapL)
+	mq.SetLogger(zapx.NewZapLogger(zapL))
 	t.Cleanup(func() { mq.SetLogger(nil) })
 
 	// 4. 初始化同步生产者，初始化日志会写入文件

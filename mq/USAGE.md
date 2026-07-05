@@ -97,10 +97,12 @@ producer.Close()
 ### 2.5 注入自定义日志
 
 ```go
+import "github.com/HeRedBo/pkg/mq/zapx"
+
 zapLogger, _ := zap.NewProduction()
 
 // 通过 Option 注入（仅当前生产者生效）
-err := mq.InitSyncKafkaProducer("my-sync-producer", []string{"localhost:9092"}, nil, mq.WithLogger(zapLogger))
+err := mq.InitSyncKafkaProducer("my-sync-producer", []string{"localhost:9092"}, nil, mq.WithLogger(zapx.NewZapLogger(zapLogger)))
 ```
 
 ---
@@ -223,6 +225,8 @@ consumer.Close()
 ### 4.5 注入自定义日志
 
 ```go
+import "github.com/HeRedBo/pkg/mq/zapx"
+
 zapLogger, _ := zap.NewProduction()
 
 consumer, err := mq.StartKafkaConsumer(
@@ -231,7 +235,7 @@ consumer, err := mq.StartKafkaConsumer(
     "my-consumer-group",
     nil,
     handler,
-    mq.WithLogger(zapLogger), // Option 注入
+    mq.WithLogger(zapx.NewZapLogger(zapLogger)), // Option 注入
 )
 ```
 
@@ -242,23 +246,39 @@ consumer, err := mq.StartKafkaConsumer(
 ### 5.1 Logger 接口
 
 ```go
+// LogField 框架无关的日志字段
+type LogField struct {
+    Key   string
+    Value interface{}
+}
+
+// Field 创建日志字段
+func Field(key string, val interface{}) LogField
+
+// ErrField 创建错误日志字段
+func ErrField(err error) LogField
+
+// Logger mq 包使用的日志接口
 type Logger interface {
-    Info(msg string, fields ...zap.Field)
-    Warn(msg string, fields ...zap.Field)
-    Error(msg string, fields ...zap.Field)
-    Debug(msg string, fields ...zap.Field)
+    Info(msg string, fields ...LogField)
+    Warn(msg string, fields ...LogField)
+    Error(msg string, fields ...LogField)
+    Debug(msg string, fields ...LogField)
+    WithFields(fields ...LogField) Logger
 }
 ```
 
-`*zap.Logger` 天然满足此接口，无需额外适配器。
+> **注意：** `*zap.Logger` 不再直接满足此接口，需要通过适配器包装。框架提供了 `zapx` 和 `logrusx` 两个适配器包。
 
 ### 5.2 方式一：全局注入
 
 所有组件（生产者、消费者）共用同一个 Logger：
 
 ```go
+import "github.com/HeRedBo/pkg/mq/zapx"
+
 zapLogger, _ := zap.NewProduction()
-mq.SetLogger(zapLogger)
+mq.SetLogger(zapx.NewZapLogger(zapLogger))
 ```
 
 ### 5.3 方式二：Option 注入
@@ -266,8 +286,10 @@ mq.SetLogger(zapLogger)
 单个组件使用独立的 Logger：
 
 ```go
+import "github.com/HeRedBo/pkg/mq/zapx"
+
 zapLogger, _ := zap.NewProduction()
-mq.InitSyncKafkaProducer("p1", hosts, nil, mq.WithLogger(zapLogger))
+mq.InitSyncKafkaProducer("p1", hosts, nil, mq.WithLogger(zapx.NewZapLogger(zapLogger)))
 ```
 
 ### 5.4 优先级
@@ -276,16 +298,83 @@ mq.InitSyncKafkaProducer("p1", hosts, nil, mq.WithLogger(zapLogger))
 Option 注入 > 全局 SetLogger > 默认控制台
 ```
 
-- 未做任何注入时，日志输出到控制台（使用标准库 `log`）
+- 未做任何注入时，日志输出到控制台（使用内置 `defaultLogger`，基于 zap 开发模式）
 - 调用 `SetLogger` 后，所有组件使用全局 Logger
 - 通过 `WithLogger` Option 注入的 Logger 优先级最高，仅对当前组件生效
 
-### 5.5 文件日志示例
+### 5.5 方式三：LogConfig 配置驱动
+
+通过 `InitLogger` 工厂函数，基于配置快速创建 Logger：
+
+```go
+// 控制台日志（开发环境）
+l, _ := mq.InitLogger(&mq.LogConfig{Mode: "console", Level: "debug"})
+mq.SetLogger(l)
+
+// 文件日志（生产环境）
+l, _ := mq.InitLogger(&mq.LogConfig{Mode: "file", Path: "/var/log/myapp/kafka.log", Level: "info"})
+mq.SetLogger(l)
+
+// 文件日志 + 自动轮转（推荐生产环境）
+l, _ := mq.InitLogger(&mq.LogConfig{
+    Mode:       "file",
+    Path:       "/var/log/myapp/kafka.log",
+    Level:      "info",
+    Rotation:   true,
+    MaxSize:    100,  // 单个文件最大 MB
+    MaxAge:     30,   // 保留最大天数
+    MaxBackups: 5,    // 保留文件最大数量
+    Compress:   true, // 压缩旧日志
+})
+mq.SetLogger(l)
+```
+
+### 5.6 WithFields 预绑定字段
+
+使用 `WithFields` 可以预绑定日志字段，后续所有日志调用都会自动携带这些字段：
+
+```go
+import "github.com/HeRedBo/pkg/mq/zapx"
+
+zapLogger, _ := zap.NewProduction()
+baseLogger := zapx.NewZapLogger(zapLogger)
+
+// 预绑定模块字段
+moduleLogger := baseLogger.WithFields(mq.Field("module", "kafka"))
+mq.SetLogger(moduleLogger)
+
+// 后续所有日志自动携带 module=kafka
+mq.InitSyncKafkaProducer("my-producer", hosts, nil)
+```
+
+### 5.7 logrus 用户接入
+
+如果项目使用 `logrus` 而非 `zap`，可以使用 `logrusx` 适配器：
+
+```go
+import (
+    "github.com/sirupsen/logrus"
+    "github.com/HeRedBo/pkg/mq/logrusx"
+)
+
+logrusLogger := logrus.New()
+logrusLogger.SetFormatter(&logrus.JSONFormatter{})
+
+mqLogger := logrusx.NewLogrusLogger(logrusLogger)
+mq.SetLogger(mqLogger)
+
+// 之后 mq 的所有日志都会通过 logrus 输出
+mq.InitSyncKafkaProducer("my-producer", hosts, nil)
+```
+
+### 5.8 文件日志示例
 
 参考 `mq_logger_test.go` 中的思路，生产环境推荐使用文件日志：
 
 ```go
-func newFileLogger(logPath string) (*zap.Logger, error) {
+import "github.com/HeRedBo/pkg/mq/zapx"
+
+func newFileLogger(logPath string) (mq.Logger, error) {
     // 日志切割配置（需配合 lumberjack）
     writer := &lumberjack.Logger{
         Filename:   logPath,
@@ -300,7 +389,8 @@ func newFileLogger(logPath string) (*zap.Logger, error) {
         zapcore.AddSync(writer),
         zapcore.InfoLevel,
     )
-    return zap.New(core), nil
+    zapLogger := zap.New(core)
+    return zapx.NewZapLogger(zapLogger), nil
 }
 
 // 使用
@@ -308,13 +398,15 @@ logger, _ := newFileLogger("/var/log/myapp/kafka.log")
 mq.SetLogger(logger)
 ```
 
-### 5.6 Sarama 内部日志桥接
+### 5.9 Sarama 内部日志桥接
 
 sarama 库内部（分区重平衡、连接建立、offset 提交等）也会产生日志，通过 `SetSaramaLogger` 可将其桥接到你的 Logger：
 
 ```go
+import "github.com/HeRedBo/pkg/mq/zapx"
+
 zapLogger, _ := zap.NewProduction()
-mq.SetSaramaLogger(zapLogger)
+mq.SetSaramaLogger(zapx.NewZapLogger(zapLogger))
 
 // 传 nil 恢复 sarama 默认控制台输出
 mq.SetSaramaLogger(nil)
@@ -380,10 +472,13 @@ config.Consumer.Group.Rebalance.GroupStrategies = ...     // 自定义重平衡�
 建议按以下顺序初始化：
 
 ```go
+import "github.com/HeRedBo/pkg/mq/zapx"
+
 // 1. 先配置日志
 zapLogger, _ := zap.NewProduction()
-mq.SetLogger(zapLogger)
-mq.SetSaramaLogger(zapLogger)
+mqLogger := zapx.NewZapLogger(zapLogger)
+mq.SetLogger(mqLogger)
+mq.SetSaramaLogger(mqLogger)
 
 // 2. 再初始化生产者/消费者
 mq.InitSyncKafkaProducer("my-producer", hosts, nil)
@@ -433,5 +528,9 @@ mq.GetKafkaSyncProducer("my-producer").Close()
 | `SetLogger` | `func SetLogger(l Logger)` | 全局注入 Logger |
 | `SetSaramaLogger` | `func SetSaramaLogger(l Logger)` | 桥接 sarama 内部日志到 Logger |
 | `WithLogger` | `func WithLogger(l Logger) Option` | Option 注入 Logger（优先级最高） |
+| `ResetLogger` | `func ResetLogger()` | 重置全局 Logger，回退到默认实现 |
+| `InitLogger` | `func InitLogger(cfg *LogConfig) (Logger, error)` | 根据配置初始化 Logger |
+| `Field` | `func Field(key string, val interface{}) LogField` | 创建日志字段 |
+| `ErrField` | `func ErrField(err error) LogField` | 创建错误日志字段 |
 | `KafkaMsgValueEncoder` | `func KafkaMsgValueEncoder(value []byte) sarama.Encoder` | 字节数组消息编码器 |
 | `KafkaMsgValueStrEncoder` | `func KafkaMsgValueStrEncoder(value string) sarama.Encoder` | 字符串消息编码器 |

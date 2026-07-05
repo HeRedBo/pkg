@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/HeRedBo/pkg/mq"
+	"github.com/HeRedBo/pkg/mq/zapx"
 	"github.com/IBM/sarama"
 	"go.uber.org/zap/zapcore"
 )
@@ -110,7 +111,7 @@ func TestConsumerWithCustomLogger(t *testing.T) {
 		groupID,
 		nil,
 		func(message *sarama.ConsumerMessage) (bool, error) { return true, nil },
-		mq.WithLogger(zapL),
+		mq.WithLogger(zapx.NewZapLogger(zapL)),
 	)
 	if err != nil {
 		t.Fatalf("StartKafkaConsumer with zap logger failed: %v", err)
