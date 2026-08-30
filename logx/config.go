@@ -1,23 +1,13 @@
-package mq
+package logx
 
 import (
-	"github.com/HeRedBo/pkg/logx"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // ─────────────────────────────────────────────
-// 类型别名：委托到 logx，保持向后兼容
-// ─────────────────────────────────────────────
-
-// LogConfig 日志配置（类型别名，实际由 logx 定义）
-// Mode 为空时默认 "console"，Level 为空时默认 "info"
-type LogConfig = logx.LogConfig
-
-// ─────────────────────────────────────────────
 // zapLoggerWrapper 内部使用，包装 *zap.Logger 实现 Logger 接口
-// 保留 mq 内部实现，供测试和 InitLogger 使用
 // ─────────────────────────────────────────────
 
 type zapLoggerWrapper struct {
@@ -26,16 +16,28 @@ type zapLoggerWrapper struct {
 }
 
 func (z *zapLoggerWrapper) Info(msg string, fields ...LogField) {
-	z.l.Info(msg, append(z.fields, toZapFields(fields)...)...)
+	baseFields := make([]zap.Field, len(z.fields))
+	copy(baseFields, z.fields)
+	baseFields = append(baseFields, toZapFields(fields)...)
+	z.l.Info(msg, baseFields...)
 }
 func (z *zapLoggerWrapper) Warn(msg string, fields ...LogField) {
-	z.l.Warn(msg, append(z.fields, toZapFields(fields)...)...)
+	baseFields := make([]zap.Field, len(z.fields))
+	copy(baseFields, z.fields)
+	baseFields = append(baseFields, toZapFields(fields)...)
+	z.l.Warn(msg, baseFields...)
 }
 func (z *zapLoggerWrapper) Error(msg string, fields ...LogField) {
-	z.l.Error(msg, append(z.fields, toZapFields(fields)...)...)
+	baseFields := make([]zap.Field, len(z.fields))
+	copy(baseFields, z.fields)
+	baseFields = append(baseFields, toZapFields(fields)...)
+	z.l.Error(msg, baseFields...)
 }
 func (z *zapLoggerWrapper) Debug(msg string, fields ...LogField) {
-	z.l.Debug(msg, append(z.fields, toZapFields(fields)...)...)
+	baseFields := make([]zap.Field, len(z.fields))
+	copy(baseFields, z.fields)
+	baseFields = append(baseFields, toZapFields(fields)...)
+	z.l.Debug(msg, baseFields...)
 }
 func (z *zapLoggerWrapper) WithFields(fields ...LogField) Logger {
 	merged := make([]zap.Field, len(z.fields)+len(fields))
@@ -49,20 +51,41 @@ func wrapZapLogger(l *zap.Logger) Logger {
 	return &zapLoggerWrapper{l: l}
 }
 
+// toZapFields 内部转换函数：将 LogField 转换为 zap.Field
+func toZapFields(fields []LogField) []zap.Field {
+	if len(fields) == 0 {
+		return nil
+	}
+	zf := make([]zap.Field, len(fields))
+	for i, f := range fields {
+		zf[i] = zap.Any(f.Key, f.Value)
+	}
+	return zf
+}
+
 // ─────────────────────────────────────────────
-// InitLogger 根据配置初始化 Logger
-// 保留 mq 内部实现，确保返回 *zapLoggerWrapper 类型（兼容测试断言）
+// LogConfig 日志配置
 // ─────────────────────────────────────────────
+
+// LogConfig 日志配置
+// Mode 为空时默认 "console"，Level 为空时默认 "info"
+type LogConfig struct {
+	Mode       string // 日志模式: "console" (默认) 或 "file"
+	Path       string // 日志文件路径（Mode=file 时使用）
+	Level      string // 日志级别: "debug", "info", "warn", "error" (默认 "info")
+	Compress   bool   // 是否压缩日志文件
+	KeepDays   int    // 日志保留天数
+	MaxSize    int    // 单个日志文件最大 MB，默认 100
+	MaxAge     int    // 日志保留最大天数，默认 30
+	MaxBackups int    // 保留日志文件最大数量，默认 5
+	Rotation   bool   // 是否启用日志轮转（Mode=file 时生效）
+}
 
 // InitLogger 根据配置初始化 Logger
 //   - Mode=console: zap development 格式输出到控制台
 //   - Mode=file + Rotation=false: zap production JSON 格式输出到指定文件
 //   - Mode=file + Rotation=true: 使用 lumberjack 做日志轮转 + zap production JSON encoder
-func InitLogger(cfg *LogConfig) (Logger, error) {
-	if cfg == nil {
-		cfg = &LogConfig{Mode: "console", Level: "info"}
-	}
-
+func InitLogger(cfg LogConfig) Logger {
 	mode := cfg.Mode
 	if mode == "" {
 		mode = "console"
@@ -73,9 +96,9 @@ func InitLogger(cfg *LogConfig) (Logger, error) {
 	switch mode {
 	case "file":
 		if cfg.Rotation {
-			return buildRotationLogger(cfg, level)
+			return buildRotationLogger(&cfg, level)
 		}
-		return buildFileLogger(cfg, level)
+		return buildFileLogger(&cfg, level)
 	default:
 		return buildConsoleLogger(level)
 	}
@@ -96,31 +119,25 @@ func parseLevel(lvl string) zap.AtomicLevel {
 }
 
 // buildConsoleLogger console 模式：zap development 格式输出到 stdout
-func buildConsoleLogger(level zap.AtomicLevel) (Logger, error) {
+func buildConsoleLogger(level zap.AtomicLevel) Logger {
 	cfg := zap.NewDevelopmentConfig()
 	cfg.Level = level
 	cfg.OutputPaths = []string{"stdout"}
-	l, err := cfg.Build()
-	if err != nil {
-		return nil, err
-	}
-	return wrapZapLogger(l), nil
+	l, _ := cfg.Build()
+	return wrapZapLogger(l)
 }
 
 // buildFileLogger file 模式 + Rotation=false：production JSON 格式输出到指定文件
-func buildFileLogger(cfg *LogConfig, level zap.AtomicLevel) (Logger, error) {
+func buildFileLogger(cfg *LogConfig, level zap.AtomicLevel) Logger {
 	zcfg := zap.NewProductionConfig()
 	zcfg.Level = level
 	zcfg.OutputPaths = []string{cfg.Path}
-	l, err := zcfg.Build()
-	if err != nil {
-		return nil, err
-	}
-	return wrapZapLogger(l), nil
+	l, _ := zcfg.Build()
+	return wrapZapLogger(l)
 }
 
 // buildRotationLogger file 模式 + Rotation=true：lumberjack 日志轮转 + zap production encoder
-func buildRotationLogger(cfg *LogConfig, level zap.AtomicLevel) (Logger, error) {
+func buildRotationLogger(cfg *LogConfig, level zap.AtomicLevel) Logger {
 	maxSize := cfg.MaxSize
 	if maxSize == 0 {
 		maxSize = 100
@@ -153,5 +170,5 @@ func buildRotationLogger(cfg *LogConfig, level zap.AtomicLevel) (Logger, error) 
 
 	core := zapcore.NewCore(encoder, zapcore.AddSync(w), level)
 	l := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	return wrapZapLogger(l), nil
+	return wrapZapLogger(l)
 }

@@ -3,12 +3,15 @@ module github.com/HeRedBo/pkg/mq
 go 1.23.2
 
 require (
+	github.com/HeRedBo/pkg/logx v0.0.0
 	github.com/IBM/sarama v1.45.1
 	github.com/eapache/go-resiliency v1.7.0
 	github.com/sirupsen/logrus v1.9.4
 	go.uber.org/zap v1.27.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
+
+replace github.com/HeRedBo/pkg/logx => ../logx
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect

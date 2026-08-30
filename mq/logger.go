@@ -1,45 +1,37 @@
 package mq
 
 import (
+	"github.com/HeRedBo/pkg/logx"
 	"go.uber.org/zap"
 )
 
 // ─────────────────────────────────────────────
-// LogField 框架自定义的日志字段，不绑定任何第三方日志库
+// 类型别名：委托到 logx，保持向后兼容
 // ─────────────────────────────────────────────
 
-// LogField 框架无关的日志字段
-type LogField struct {
-	Key   string
-	Value interface{}
-}
+// LogField 框架无关的日志字段（类型别名，实际由 logx 定义）
+type LogField = logx.LogField
 
-// Field 创建日志字段
+// Logger mq 包使用的日志接口（类型别名，实际由 logx 定义）
+type Logger = logx.Logger
+
+// ─────────────────────────────────────────────
+// 辅助函数：委托到 logx 实现
+// ─────────────────────────────────────────────
+
+// Field 创建日志字段，委托到 logx.Field
 func Field(key string, val interface{}) LogField {
-	return LogField{Key: key, Value: val}
+	return logx.Field(key, val)
 }
 
-// ErrField 创建错误日志字段
+// ErrField 创建错误日志字段，委托到 logx.ErrField
 func ErrField(err error) LogField {
-	return LogField{Key: "error", Value: err}
-}
-
-// ─────────────────────────────────────────────
-// Logger 接口：mq 包对外暴露的日志抽象
-// 使用自定义 LogField，不绑定任何第三方日志库
-// ─────────────────────────────────────────────
-
-// Logger mq 包使用的日志接口
-type Logger interface {
-	Info(msg string, fields ...LogField)
-	Warn(msg string, fields ...LogField)
-	Error(msg string, fields ...LogField)
-	Debug(msg string, fields ...LogField)
-	WithFields(fields ...LogField) Logger
+	return logx.ErrField(err)
 }
 
 // ─────────────────────────────────────────────
 // 全局默认 Logger（控制台输出，兼容旧行为）
+// 保留 mq 内部的默认实现，供测试和内部使用
 // ─────────────────────────────────────────────
 
 // globalLogger 全局注入的 Logger，nil 时回退到 defaultLogger
@@ -107,13 +99,19 @@ func getLogger(opt Logger) Logger {
 }
 
 // ResetLogger 重置全局 Logger，使后续调用回退到默认实现
-func ResetLogger() { globalLogger = nil }
+// 同时重置 logx 的全局 Logger，保持两个包的日志状态一致
+func ResetLogger() {
+	globalLogger = nil
+	logx.ResetLogger()
+}
 
 // SetLogger 全局注入 Logger（如 *zap.Logger）
 // 适用于整个应用统一使用同一 Logger 的场景
 // 调用时机：业务项目 init() 或 main() 初始化阶段，在 InitSyncKafkaProducer 之前
+// 同时设置 logx 的全局 Logger，保持两个包的日志状态一致
 func SetLogger(l Logger) {
 	globalLogger = l
+	logx.SetLogger(l)
 }
 
 // ─────────────────────────────────────────────
