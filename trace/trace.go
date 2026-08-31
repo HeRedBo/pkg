@@ -3,9 +3,10 @@ package trace
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"go.uber.org/zap"
 	"io"
 	"sync"
+
+	"github.com/HeRedBo/pkg/logx"
 )
 
 const Header = "TRACE-ID"
@@ -17,7 +18,7 @@ type T interface {
 	AppendDialog(dialog *Dialog) *Trace
 	AppendSQL(sql *SQL) *Trace
 	AppendCache(Cache *Cache) *Trace
-	SetLogger(logger *zap.Logger)
+	SetLogger(logger logx.Logger)
 	SetAlwaysTrace(b bool)
 }
 
@@ -33,7 +34,7 @@ type Trace struct {
 	Cache              []*Cache    `json:"Cache"`                // 执行的 Cache 信息
 	Success            bool        `json:"success"`              // 请求结果 true or false
 	CostMillisecond    float64     `json:"cost_millisecond"`     // 执行时长(单位ms)
-	Logger             *zap.Logger `json:"-"`
+	Logger             logx.Logger `json:"-"`
 	AlwaysTrace        bool        `json:"always_trace"`
 }
 
@@ -44,7 +45,7 @@ type Request struct {
 	DecodedURL  string      `json:"decoded_url"` // 请求地址
 	Header      interface{} `json:"header"`      // 请求 Header 信息
 	Body        interface{} `json:"body"`        // 请求 Body 信息
-	Logger      *zap.Logger `json:"-"`
+	Logger      logx.Logger `json:"-"`
 	AlwaysTrace bool        `json:"always_trace"`
 }
 
@@ -57,7 +58,7 @@ type Response struct {
 	HttpCode        int         `json:"http_code"`                   // HTTP 状态码
 	HttpCodeMsg     string      `json:"http_code_msg"`               // HTTP 状态码信息
 	CostMillisecond int64       `json:"cost_millisecond"`            // 执行时间(单位ms)
-	Logger          *zap.Logger `json:"-"`
+	Logger          logx.Logger `json:"-"`
 	AlwaysTrace     bool        `json:"always_trace"`
 }
 
@@ -68,7 +69,7 @@ type SQL struct {
 	AffectedRows          int64       `json:"affected_rows"`           // 影响行数
 	CostMillisecond       int64       `json:"cost_millisecond"`        // 执行时长(单位ms)
 	SlowLoggerMillisecond int64       `json:"slow_logger_millisecond"` //慢查记录时间
-	Logger                *zap.Logger `json:"-"`
+	Logger                logx.Logger `json:"-"`
 	AlwaysTrace           bool        `json:"always_trace"`
 }
 
@@ -81,7 +82,7 @@ type Cache struct {
 	TTL                   float64     `json:"ttl,omitempty"`           // 超时时长(单位分)
 	CostMillisecond       int64       `json:"cost_millisecond"`        // 执行时长(单位ms)
 	SlowLoggerMillisecond int64       `json:"slow_logger_millisecond"` //慢查记录时间
-	Logger                *zap.Logger `json:"-"`
+	Logger                logx.Logger `json:"-"`
 	AlwaysTrace           bool        `json:"always_trace"`
 }
 
@@ -96,7 +97,7 @@ type Dialog struct {
 	Responses       []*Response `json:"responses"`        // 返回信息
 	Success         bool        `json:"success"`          // 是否成功，true 或 false
 	CostMillisecond int64       `json:"cost_millisecond"` // 执行时长(单位ms)
-	Logger          *zap.Logger `json:"-"`
+	Logger          logx.Logger `json:"-"`
 	AlwaysTrace     bool        `json:"always_trace"`
 }
 
@@ -116,7 +117,7 @@ type Debug struct {
 	Key             string      `json:"key"`              // 标示
 	Value           interface{} `json:"value"`            // 值
 	CostMillisecond int64       `json:"cost_millisecond"` // 执行时长(单位ms)
-	Logger          *zap.Logger `json:"-"`
+	Logger          logx.Logger `json:"-"`
 }
 
 func New(id string) *Trace {
@@ -188,7 +189,7 @@ func (t *Trace) AppendSQL(sql *SQL) *Trace {
 }
 
 // SetLogger 设置日志
-func (t *Trace) SetLogger(logger *zap.Logger) {
+func (t *Trace) SetLogger(logger logx.Logger) {
 	t.Logger = logger
 }
 

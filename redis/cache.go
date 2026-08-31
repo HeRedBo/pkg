@@ -2,9 +2,9 @@ package redis
 
 import (
 	"context"
-	"log"
-	"os"
 	"time"
+
+	"github.com/HeRedBo/pkg/logx"
 )
 
 type Cache interface {
@@ -29,14 +29,17 @@ type Cache interface {
 	Version(ctx context.Context) string
 }
 
-type stdLogger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
+// option 初始化选项集合
+type option struct {
+	logger logx.Logger
 }
 
-var CacheStdLogger stdLogger
+// Option 初始化选项函数
+type Option func(*option)
 
-func init() {
-	CacheStdLogger = log.New(os.Stdout, "[Cache] ", log.LstdFlags|log.Lshortfile)
+// WithLogger 通过 Option 注入 Logger（优先级最高）
+func WithLogger(l logx.Logger) Option {
+	return func(o *option) {
+		o.logger = l
+	}
 }

@@ -3,11 +3,10 @@ package nosql
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"strings"
 	"time"
 
+	"github.com/HeRedBo/pkg/logx"
 	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -16,12 +15,6 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
 
-type stdLogger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
-}
-
 type MgClient struct {
 	*mongo.Client
 }
@@ -29,21 +22,31 @@ type MgClient struct {
 type CursorCallBackFunc func(res interface{}, err error)
 
 var (
-	mongoClients   = map[string]*MgClient{}
-	MongoStdLogger stdLogger
+	mongoClients = map[string]*MgClient{}
+	pkgLogger    Logger // 包级日志，InitMongoClient 时解析
 )
-
-func init() {
-	MongoStdLogger = log.New(os.Stdout, "[Mongo]", log.LstdFlags|log.Lshortfile)
-	mongoClients = make(map[string]*MgClient)
-}
 
 const (
 	DefaultMongoClient    = "default-mongo"
 	DefaultConnectTimeout = 3 * time.Second
 )
 
-func InitMongoClient(clientName, username, password string, addrs []string, mongoPoolLimit uint64) error {
+// option 初始化选项集合
+type option struct {
+	logger logx.Logger
+}
+
+// Option 初始化选项函数
+type Option func(*option)
+
+// WithLogger 通过 Option 注入 Logger（优先级最高）
+func WithLogger(l logx.Logger) Option {
+	return func(o *option) {
+		o.logger = l
+	}
+}
+
+func InitMongoClient(clientName, username, password string, addrs []string, mongoPoolLimit uint64, opts ...Option) error {
 	hosts := strings.Join(addrs, ",")
 	auth := ""
 	if len(username) > 0 && len(password) > 0 {
@@ -52,9 +55,19 @@ func InitMongoClient(clientName, username, password string, addrs []string, mong
 	ctx, cancel := context.WithTimeout(context.Background(), DefaultConnectTimeout)
 	defer cancel()
 
+	// 解析 Option
+	o := &option{}
+	for _, fn := range opts {
+		if fn != nil {
+			fn(o)
+		}
+	}
+	logger := getLogger(o.logger)
+	pkgLogger = logger
+
 	// example mongodb://username:password@192.168.1.99:27017,192.168.1.88:27017,192.168.1.66:27017
 	mongoURL := fmt.Sprintf("mongodb://%s%s", auth, hosts)
-	MongoStdLogger.Print("mongoURL : ", mongoURL)
+	logger.Debug("mongo connection url", Field("url", mongoURL))
 	opt := options.Client().ApplyURI(mongoURL)
 	opt.SetReadPreference(readpref.SecondaryPreferred()) //优先读从库
 	//opt.SetMaxConnIdleTime(30 * time.Minute)   //指定连接可以保持空闲的最时间（默认无限制）
@@ -79,7 +92,7 @@ func GeMongoClient(clientName string) *MgClient {
 	if client, ok := mongoClients[clientName]; ok {
 		return client
 	}
-	MongoStdLogger.Print("Call 'InitMongo' before!")
+	getLogger(pkgLogger).Error("mongo not initialized")
 	return nil
 }
 
@@ -406,8 +419,9 @@ func (client *MgClient) Close() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	err := client.Disconnect(ctx)
+	l := getLogger(pkgLogger)
 	if err != nil {
-		MongoStdLogger.Print("mongo close error ", err)
+		l.Error("mongo close error", ErrField(err))
 	}
-	MongoStdLogger.Print("closed : mongodb")
+	l.Info("mongodb closed")
 }

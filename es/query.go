@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"github.com/olivere/elastic/v7"
+
+	"github.com/HeRedBo/pkg/logx"
 )
 
 type Mget struct {
@@ -52,7 +54,7 @@ func WithProfile(profile bool) QueryOption {
 
 func WithEnableDSL(enableDSL bool) QueryOption {
 	return func(opt *queryOption) {
-		opt.Profile = enableDSL
+		opt.EnableDSL = enableDSL
 	}
 }
 
@@ -165,11 +167,15 @@ func (c *Client) Query(ctx context.Context, indexName string, routings []string,
 	data, _ := json.Marshal(src)
 	rs := strings.Join(routings, ",")
 	if c.DebugMode || c.QueryLogEnable || queryOpt.EnableDSL {
-		EStdLogger.Print("DSL : ", string(data), "routing: ", rs)
+		c.dslLog.Info("DSL", logx.Field("dsl", string(data)), logx.Field("routing", rs))
 	}
 
 	if queryOpt.SlowQueryMillisecond > 0 && res != nil && res.TookInMillis >= queryOpt.SlowQueryMillisecond {
-		EStdLogger.Print("slow query DSL: ", string(data), "routing: ", rs)
+		c.dslLog.Warn("slow query",
+			logx.Field("dsl", string(data)),
+			logx.Field("routing", rs),
+			logx.Field("took_ms", res.TookInMillis),
+		)
 	}
 	return res, err
 }
@@ -208,7 +214,7 @@ func (c *Client) ScrollQuery(ctx context.Context, index []string, typeStr string
 	data, _ := json.Marshal(src)
 	rs := strings.Join(routings, ",")
 	if c.DebugMode || c.QueryLogEnable || queryOpt.EnableDSL {
-		EStdLogger.Print("DSL : ", string(data), "routing: ", rs)
+		c.dslLog.Info("DSL", logx.Field("dsl", string(data)), logx.Field("routing", rs))
 	}
 
 	scrollService := c.Client.Scroll(index...).SearchSource(searchSource).Size(size).Preference(DefaultPreference)
@@ -230,16 +236,20 @@ func (c *Client) ScrollQuery(ctx context.Context, index []string, typeStr string
 			break
 		}
 		if queryOpt.SlowQueryMillisecond > 0 && res != nil && res.TookInMillis >= queryOpt.SlowQueryMillisecond {
-			EStdLogger.Print("slow query DSL: ", string(data), "routing: ", rs)
+			c.dslLog.Warn("slow query",
+				logx.Field("dsl", string(data)),
+				logx.Field("routing", rs),
+				logx.Field("took_ms", res.TookInMillis),
+			)
 		}
 
 		if res == nil {
-			EStdLogger.Print("nil result !")
+			c.log.Warn("nil result")
 			break
 		}
 
 		if res.Hits == nil {
-			EStdLogger.Print("expected results.Hits != nil; got nil")
+			c.log.Warn("expected results.Hits != nil; got nil")
 		}
 
 		if len(res.Hits.Hits) == 0 {

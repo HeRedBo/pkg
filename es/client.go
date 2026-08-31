@@ -4,22 +4,16 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
-	"github.com/olivere/elastic/v7"
-	"log"
 	"net/http"
-	"os"
 	"sync"
 	"time"
+
+	"github.com/olivere/elastic/v7"
+
+	"github.com/HeRedBo/pkg/logx"
 )
 
 var clients map[string]*Client
-var EStdLogger stdLogger
-
-type stdLogger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
-}
 
 type option struct {
 	QueryLogEnable              bool
@@ -27,6 +21,9 @@ type option struct {
 	Bulk                        *Bulk
 	DebugMode                   bool
 	Scheme                      string
+	EnableDSL                   bool
+	logger                      logx.Logger // 业务日志
+	dslLogger                   logx.Logger // DSL 日志（可与业务日志分离）
 }
 
 type Option func(*option)
@@ -43,6 +40,8 @@ type Client struct {
 	DebugMode      bool
 	CacheIndices   sync.Map
 	lock           sync.Mutex
+	log            logx.Logger // 业务日志
+	dslLog         logx.Logger // DSL 日志
 }
 
 type Bulk struct {
@@ -58,10 +57,6 @@ type Bulk struct {
 const (
 	SimpleClient = "simple-es-client"
 )
-
-func init() {
-	EStdLogger = log.New(os.Stdout, "[es]", log.LstdFlags|log.Lshortfile)
-}
 
 func WithQueryLogEnable(enble bool) Option {
 	return func(opt *option) {
@@ -81,27 +76,24 @@ func WithBulk(bulk *Bulk) Option {
 	}
 }
 
-func InitClinet(clientName string, urls []string, username, password string) error {
-	if clients == nil {
-		clients = make(map[string]*Client, 0)
+func WithDebugMode(debug bool) Option {
+	return func(opt *option) {
+		opt.DebugMode = debug
 	}
-	client := &Client{
-		Urls:           urls,
-		QueryLogEnable: false,
-		Username:       username,
-		password:       password,
-		Bulk:           DefaultBulk(),
-		CacheIndices:   sync.Map{},
-		lock:           sync.Mutex{},
+}
+
+// WithLogger 注入业务日志 Logger
+func WithLogger(l logx.Logger) Option {
+	return func(opt *option) {
+		opt.logger = l
 	}
-	client.Bulk.Name = clientName
-	options := getBaseOptions(username, password, urls...)
-	err := client.newClient(options)
-	if err != nil {
-		return err
+}
+
+// WithDSLLogger 注入 DSL 日志 Logger（可与业务日志分离，将查询日志输出到不同文件）
+func WithDSLLogger(l logx.Logger) Option {
+	return func(opt *option) {
+		opt.dslLogger = l
 	}
-	clients[clientName] = client
-	return nil
 }
 
 func getBaseOptions(username, password string, urls ...string) []elastic.ClientOptionFunc {
@@ -112,21 +104,17 @@ func getBaseOptions(username, password string, urls ...string) []elastic.ClientO
 	//开启Sniff，SDK会定期(默认15分钟一次)嗅探集群中全部节点，将全部节点都加入到连接列表中，
 	//后续新增的节点也会自动加入到可连接列表，但实际生产中我们可能会设置专门的协调节点，所以默认不开启嗅探
 	options = append(options, elastic.SetSniff(false))
-	options = append(options, elastic.SetErrorLog(EStdLogger))
 	return options
 }
 
-func InitSimpleClient(urls []string, username, password string) error {
-	esClient, err := elastic.NewSimpleClient(
-		elastic.SetURL(urls...),
-		elastic.SetBasicAuth(username, password),
-		elastic.SetErrorLog(EStdLogger),
-	)
-	if err != nil {
-		return err
+func InitClinet(clientName string, urls []string, username, password string) error {
+	if clients == nil {
+		clients = make(map[string]*Client, 0)
 	}
-	clitent := &Client{
-		Name:           SimpleClient,
+
+	log := getLogger(nil)
+
+	client := &Client{
 		Urls:           urls,
 		QueryLogEnable: false,
 		Username:       username,
@@ -134,10 +122,75 @@ func InitSimpleClient(urls []string, username, password string) error {
 		Bulk:           DefaultBulk(),
 		CacheIndices:   sync.Map{},
 		lock:           sync.Mutex{},
+		log:            log,
+		dslLog:         log,
+	}
+	client.Bulk.Name = clientName
+	options := getBaseOptions(username, password, urls...)
+	options = append(options, elastic.SetErrorLog(&elasticLogger{l: log}))
+	err := client.newClient(options)
+	if err != nil {
+		return err
+	}
+	clients[clientName] = client
+	return nil
+}
+
+func InitSimpleClient(urls []string, username, password string, options ...Option) error {
+	if clients == nil {
+		clients = make(map[string]*Client, 0)
 	}
 
-	clitent.Client = esClient
+	opt := &option{}
+	for _, f := range options {
+		if f != nil {
+			f(opt)
+		}
+	}
+
+	log := getLogger(opt.logger)
+	dslLog := getLogger(opt.dslLogger)
+
+	esOptions := getBaseOptions(username, password, urls...)
+	esOptions = append(esOptions, elastic.SetErrorLog(&elasticLogger{l: log}))
+
+	esClient, err := elastic.NewSimpleClient(esOptions...)
+	if err != nil {
+		return err
+	}
+
+	clitent := &Client{
+		Name:           SimpleClient,
+		Urls:           urls,
+		QueryLogEnable: opt.QueryLogEnable,
+		Username:       username,
+		password:       password,
+		Bulk:           opt.Bulk,
+		CacheIndices:   sync.Map{},
+		lock:           sync.Mutex{},
+		Client:         esClient,
+		log:            log,
+		dslLog:         dslLog,
+	}
+	if clitent.Bulk == nil {
+		clitent.Bulk = DefaultBulk()
+	}
 	clitent.Bulk.Name = clitent.Name
+
+	if clitent.Bulk.AfterFunc == nil {
+		clientLog := log
+		clitent.Bulk.AfterFunc = func(executionId int64, requests []elastic.BulkableRequest, response *elastic.BulkResponse, err error) {
+			if err != nil || (response != nil && response.Errors) {
+				res, _ := json.Marshal(response)
+				clientLog.Error("bulk execution error",
+					logx.Field("executionId", executionId),
+					logx.Field("response", string(res)),
+					logx.ErrField(err),
+				)
+			}
+		}
+	}
+
 	clitent.BulkProcessor, err = esClient.BulkProcessor().
 		Name(clitent.Bulk.Name).
 		Workers(clitent.Bulk.Workers).
@@ -148,11 +201,9 @@ func InitSimpleClient(urls []string, username, password string) error {
 		After(clitent.Bulk.AfterFunc).
 		Do(clitent.Bulk.Ctx)
 	if err != nil {
-		EStdLogger.Print("init bulkProcessor error ", err)
+		log.Error("init bulkProcessor error", logx.ErrField(err))
 	}
-	if clients == nil {
-		clients = make(map[string]*Client, 0)
-	}
+
 	clients[SimpleClient] = clitent
 	return nil
 }
@@ -162,24 +213,33 @@ func InitClientWithOptions(clientName string, urls []string, username, password 
 		clients = make(map[string]*Client, 0)
 	}
 
-	client := &Client{
-		Urls:           urls,
-		QueryLogEnable: false,
-		Username:       username,
-		password:       password,
-		Bulk:           DefaultBulk(),
-		CacheIndices:   sync.Map{},
-		lock:           sync.Mutex{},
-	}
 	opt := &option{}
 	for _, f := range options {
 		if f != nil {
 			f(opt)
 		}
 	}
+
+	log := getLogger(opt.logger)
+	dslLog := getLogger(opt.dslLogger)
+
+	client := &Client{
+		Urls:           urls,
+		QueryLogEnable: opt.QueryLogEnable,
+		Username:       username,
+		password:       password,
+		Bulk:           opt.Bulk,
+		CacheIndices:   sync.Map{},
+		lock:           sync.Mutex{},
+		DebugMode:      opt.DebugMode,
+		log:            log,
+		dslLog:         dslLog,
+	}
+
 	esOptions := getBaseOptions(username, password, urls...)
+	esOptions = append(esOptions, elastic.SetErrorLog(&elasticLogger{l: log}))
 	if opt.DebugMode {
-		esOptions = append(esOptions, elastic.SetInfoLog(EStdLogger))
+		esOptions = append(esOptions, elastic.SetInfoLog(&elasticLogger{l: log}))
 	}
 	if len(opt.Scheme) > 0 {
 		esOptions = append(esOptions, elastic.SetScheme(opt.Scheme))
@@ -212,7 +272,7 @@ func GetClient(name string) *Client {
 	if client, exist := clients[name]; exist {
 		return client
 	}
-	EStdLogger.Println("call init", name, "before !!!")
+	logx.GetLogger().Warn("call init before", logx.Field("client", name))
 	return nil
 }
 
@@ -220,7 +280,7 @@ func GetSimpleClient() *Client {
 	if client, exist := clients[SimpleClient]; exist {
 		return client
 	}
-	EStdLogger.Print("call init", SimpleClient, "before !!!")
+	logx.GetLogger().Warn("call init before", logx.Field("client", SimpleClient))
 	return nil
 }
 
@@ -241,19 +301,30 @@ func (c *Client) newClient(options []elastic.ClientOptionFunc) error {
 
 	// 参数合理性校验
 	if c.Bulk.RequestSize > 100*2024*1024 {
-		EStdLogger.Print("ulk RequestSize must be smaller than 100MB; it will be ignored.")
+		c.log.Warn("Bulk RequestSize must be smaller than 100MB; it will be ignored.")
 		c.Bulk.RequestSize = 100 * 2024 * 1024
 	}
 	if c.Bulk.ActionSize >= 10000 {
-		EStdLogger.Print("Bulk ActionSize must be smaller than 10000; it will be ignored.")
+		c.log.Warn("Bulk ActionSize must be smaller than 10000; it will be ignored.")
 		c.Bulk.ActionSize = 10000
 	}
 	if c.Bulk.FlushInterval >= 60 {
-		EStdLogger.Print("Bulk FlushInterval must be smaller than 60s; it will be ignored.")
+		c.log.Warn("Bulk FlushInterval must be smaller than 60s; it will be ignored.")
 		c.Bulk.FlushInterval = time.Second * 60
 	}
 	if c.Bulk.AfterFunc == nil {
-		c.Bulk.AfterFunc = defaultBulkFunc
+		// 默认回调：使用实例 logger 记录 bulk 执行错误
+		clientLog := c.log
+		c.Bulk.AfterFunc = func(executionId int64, requests []elastic.BulkableRequest, response *elastic.BulkResponse, err error) {
+			if err != nil || (response != nil && response.Errors) {
+				res, _ := json.Marshal(response)
+				clientLog.Error("bulk execution error",
+					logx.Field("executionId", executionId),
+					logx.Field("response", string(res)),
+					logx.ErrField(err),
+				)
+			}
+		}
 	}
 	if c.Bulk.Ctx == nil {
 		c.Bulk.Ctx = context.Background()
@@ -269,7 +340,7 @@ func (c *Client) newClient(options []elastic.ClientOptionFunc) error {
 		After(c.Bulk.AfterFunc).
 		Do(c.Bulk.Ctx)
 	if err != nil {
-		EStdLogger.Print("init bulkProcessor error ", err)
+		c.log.Error("init bulkProcessor error", logx.ErrField(err))
 	}
 	return nil
 }
@@ -277,7 +348,12 @@ func (c *Client) newClient(options []elastic.ClientOptionFunc) error {
 func defaultBulkFunc(executionId int64, requests []elastic.BulkableRequest, response *elastic.BulkResponse, err error) {
 	if err != nil || (response != nil && response.Errors) {
 		res, _ := json.Marshal(response)
-		EStdLogger.Printf("executionId: %d ;requests : %v; response : %s ; err : %+v", executionId, requests, res, err)
+		logx.GetLogger().Error("bulk execution error",
+			logx.Field("executionId", executionId),
+			logx.Field("requests", requests),
+			logx.Field("response", string(res)),
+			logx.ErrField(err),
+		)
 	}
 }
 
@@ -287,17 +363,17 @@ func DefaultBulk() *Bulk {
 		FlushInterval: 1,
 		ActionSize:    500,
 		RequestSize:   5 << 20, // 5 MB,
-		AfterFunc:     defaultBulkFunc,
 		Ctx:           context.Background(),
 	}
 }
 
 func CloseAll() {
+	log := logx.GetLogger()
 	for _, c := range clients {
 		if c != nil {
 			err := c.BulkProcessor.Close()
 			if err != nil {
-				EStdLogger.Print("bulk close error", err)
+				log.Error("bulk close error", logx.ErrField(err))
 			}
 		}
 	}

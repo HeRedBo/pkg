@@ -2,6 +2,8 @@ github.com/HeRedBo/pkg/compression v1.0.0 h1:YFAOVKEEXsdasFxU5fWyMgyFHyNPfiedFx+
 github.com/HeRedBo/pkg/compression v1.0.0/go.mod h1:JuRdExmFtzl5FBt7GtkWznUWM5XuBHsdD/aqV1imNDU=
 github.com/HeRedBo/pkg/errors v1.0.0 h1:jZsP+TpOk4CKKUgFd/mDQEaBetMwIYTz8/wfcij5RVI=
 github.com/HeRedBo/pkg/errors v1.0.0/go.mod h1:A9CiSTHhQnTvosBQwHejQVNp81YxcMASwwpPCzZboLQ=
+github.com/HeRedBo/pkg/logx v0.0.0-20260831081433-225bdd1ff04b h1:kH/ploIvfIgEEr/NUx3qL/Q3h/HKhsBozdYLyJBLcwE=
+github.com/HeRedBo/pkg/logx v0.0.0-20260831081433-225bdd1ff04b/go.mod h1:qHCuQVGrlssRyQSKt9hr8vIE/amTbNcpUUUbz0UyYOU=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
@@ -69,6 +71,8 @@ gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c h1:Hei/4ADfdWqJk1ZMxUNpqntN
 gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c/go.mod h1:JHkPIbrfpd72SG/EVd6muEfDQjcINNoR0C8j2r3qZ4Q=
 gopkg.in/fsnotify.v1 v1.4.7 h1:xOHLXZwVvI9hhs+cLKq5+I5onOuwQLhQwiu63xxlHs4=
 gopkg.in/fsnotify.v1 v1.4.7/go.mod h1:Tz8NjZHkW78fSQdbUxIjBTcgA1z1m8ZHf0WmKUhAMys=
+gopkg.in/natefinch/lumberjack.v2 v2.2.1 h1:bBRl1b0OH9s/DuPhuXpNl+VtCaJXFZ5/uEFST95x9zc=
+gopkg.in/natefinch/lumberjack.v2 v2.2.1/go.mod h1:YD8tP3GAjkrDg1eZH7EGmyESg/lsYskCTPBJVb9jqSc=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 h1:uRGJdciOHaEIrze2W8Q3AKkepLTh2hOroT7a+7czfdQ=
 gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7/go.mod h1:dt/ZhP58zS4L8KSrWDmTeBkI65Dw0HsyUHuEVlX15mw=
 gopkg.in/yaml.v2 v2.2.1/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=

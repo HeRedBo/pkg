@@ -65,13 +65,21 @@ func setDefaultClusterOptions(opt *redis.ClusterOptions) {
 	}
 }
 
-func InitRedis(clientName string, opt *redis.Options) error {
+func InitRedis(clientName string, opt *redis.Options, opts ...Option) error {
 	if len(clientName) == 0 {
 		return errors.New("empty client name")
 	}
 
 	if len(opt.Addr) == 0 {
 		return errors.New("empty addr")
+	}
+
+	// 解析 Option
+	o := &option{}
+	for _, fn := range opts {
+		if fn != nil {
+			fn(o)
+		}
 	}
 
 	setDefaultOptions(opt)
@@ -83,11 +91,12 @@ func InitRedis(clientName string, opt *redis.Options) error {
 
 	redisClients[clientName] = &Redis{
 		client: client,
+		log:    getLogger(o.logger),
 	}
 	return nil
 }
 
-func InitClusterRedis(clientName string, opt *redis.ClusterOptions) error {
+func InitClusterRedis(clientName string, opt *redis.ClusterOptions, opts ...Option) error {
 	if len(clientName) == 0 {
 		return errors.New("empty client name")
 	}
@@ -96,9 +105,17 @@ func InitClusterRedis(clientName string, opt *redis.ClusterOptions) error {
 		return errors.New("empty addr")
 	}
 
+	// 解析 Option
+	o := &option{}
+	for _, fn := range opts {
+		if fn != nil {
+			fn(o)
+		}
+	}
+
 	setDefaultClusterOptions(opt)
 	//NewClusterClient执行过程中会连接redis集群并, 并尝试发送("cluster", "info")指令去进行多次连接,
-	//如果这里传入很多连接地址，并且连接地址都不可用的情况下会阻塞很长时间
+	//如果这里传入很多连接地址，并且连接地址都不可用的情况下会阻塞长时间
 	client := redis.NewClusterClient(opt)
 	if err := client.Ping().Err(); err != nil {
 		return err
@@ -106,6 +123,7 @@ func InitClusterRedis(clientName string, opt *redis.ClusterOptions) error {
 
 	redisClients[clientName] = &Redis{
 		clusterClient: client,
+		log:           getLogger(o.logger),
 	}
 	return nil
 }
@@ -148,21 +166,21 @@ func (r *Redis) Set(key string, value interface{}, ttl time.Duration) error {
 // Get some key from redis
 func (r *Redis) Get(key string) interface{} {
 	if len(key) == 0 {
-		CacheStdLogger.Println("empty key")
+		r.log.Warn("empty key")
 		return nil
 	}
 
 	if r.client != nil {
 		value, err := r.client.Get(key).Result()
 		if err != nil && err != redis.Nil {
-			CacheStdLogger.Printf("redis get key: %s err %v", key, err)
+			r.log.Error("redis get key error", Field("key", key), ErrField(err))
 		}
 		return value
 	}
 
 	value, err := r.clusterClient.Get(key).Result()
 	if err != nil && err != redis.Nil {
-		CacheStdLogger.Printf("redis get key: %s err %v", key, err)
+		r.log.Error("redis get key error", Field("key", key), ErrField(err))
 	}
 	return value
 }
@@ -255,13 +273,13 @@ func (r *Redis) IsExist(key string) bool {
 	if r.client != nil {
 		value, err := r.client.Exists(key).Result()
 		if err != nil && err != redis.Nil {
-			CacheStdLogger.Printf("cmd : Exists ; key : %s ; err : %v", key, err)
+			r.log.Error("redis exists error", Field("key", key), ErrField(err))
 		}
 		return value > 0
 	}
 	value, err := r.clusterClient.Exists(key).Result()
 	if err != nil && err != redis.Nil {
-		CacheStdLogger.Printf("cmd : Exists ; key : %s ; err : %v", key, err)
+		r.log.Error("redis exists error", Field("key", key), ErrField(err))
 	}
 	return value > 0
 }

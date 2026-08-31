@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+
 	"github.com/HeRedBo/pkg/nosql"
 	"go.mongodb.org/mongo-driver/bson"
 )
@@ -23,7 +25,7 @@ const (
 func main() {
 	err := nosql.InitMongoClient(nosql.DefaultMongoClient, "admin", "admin123", []string{"127.0.0.1:27017"}, 100)
 	if err != nil {
-		nosql.MongoStdLogger.Print(err)
+		fmt.Println(err)
 		panic("InitMongoClient, failed")
 	}
 	mongoClient := nosql.GeMongoClient(nosql.DefaultMongoClient)
@@ -141,7 +143,7 @@ func main() {
 	//$in 中不存在的id不抛异常
 	err = mongoClient.DeleteMany(DBName, TableName, bson.D{{"_id", bson.D{{"$in", []int64{4, 7}}}}})
 	if err != nil {
-		nosql.MongoStdLogger.Print("DeleteOne : ", " error : ", err)
+		fmt.Println("DeleteOne error:", err)
 	}
 
 	//dump.Println(mongoClient)
@@ -150,5 +152,5 @@ func main() {
 // 游标会超时，所以在回调函数内部，一般不宜耦合过多操作
 // 可以将回调中查询到的数放到本地数组或者map中
 func callback(res interface{}, err error) {
-	nosql.MongoStdLogger.Print(res, err)
+	fmt.Println(res, err)
 }

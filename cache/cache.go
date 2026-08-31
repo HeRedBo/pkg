@@ -1,10 +1,11 @@
 package cache
 
 import (
-	"github.com/go-redis/redis/v7"
-	"log"
-	"os"
 	"time"
+
+	"github.com/go-redis/redis/v7"
+
+	"github.com/HeRedBo/pkg/logx"
 )
 
 /**
@@ -31,19 +32,24 @@ type Cache interface {
 	Version() string
 }
 
-type stdLogger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
+// option 缓存连接配置项
+type option struct {
+	logger logx.Logger
 }
 
-var CacheStdLogger stdLogger
+// Option 函数式选项
+type Option func(*option)
 
+// WithLogger 通过 Option 注入 Logger（优先级最高）
+func WithLogger(l logx.Logger) Option {
+	return func(opt *option) {
+		opt.logger = l
+	}
+}
+
+// Redis 缓存实现
 type Redis struct {
 	client        *redis.Client
 	clusterClient *redis.ClusterClient
-}
-
-func init() {
-	CacheStdLogger = log.New(os.Stdout, "[cache]", log.LstdFlags|log.Lshortfile)
+	log           logx.Logger
 }

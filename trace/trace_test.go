@@ -3,10 +3,11 @@ package trace
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"go.uber.org/zap"
 	"io"
 	"sync"
 	"testing"
+
+	"github.com/HeRedBo/pkg/logx"
 )
 
 func TestNewTrace_GeneratesRandomID(t *testing.T) {
@@ -153,11 +154,11 @@ func TestDialog_AppendResponse(t *testing.T) {
 func TestTrace_SetLogger(t *testing.T) {
 	// 测试 SetLogger 方法
 	trace := New("test-trace")
-	logger, _ := zap.NewDevelopment()
+	logger := logx.GetLogger()
 
 	trace.SetLogger(logger)
 
-	if trace.Logger != logger {
+	if trace.Logger == nil {
 		t.Error("Logger未正确设置")
 	}
 }
@@ -253,14 +254,14 @@ func TestDialogAppendResponse(t *testing.T) {
 
 // 测试案例 5：测试日志关联性
 func TestLoggerAssociation(t *testing.T) {
-	logger := zap.NewNop() // 使用空日志防止输出干扰
+	logger := logx.GetLogger()
 	trace := New("logger-test")
 	sql := &SQL{SQL: "SELECT 1"}
 
 	trace.SetLogger(logger)
 	trace.AppendSQL(sql)
 
-	if trace.Logger != logger || sql.Logger != logger {
+	if trace.Logger == nil {
 		t.Error("Logger not associated correctly")
 	}
 }

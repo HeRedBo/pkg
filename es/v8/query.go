@@ -2,8 +2,9 @@ package v8
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"log"
+	"fmt"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/get"
@@ -57,7 +58,7 @@ func WithProfile(profile bool) QueryOption {
 
 func WithEnableDSL(enableDSL bool) QueryOption {
 	return func(opt *queryOption) {
-		opt.Profile = enableDSL
+		opt.EnableDSL = enableDSL
 	}
 }
 
@@ -140,7 +141,12 @@ func (c *Client) Query(ctx context.Context, indexName string, routing string, qu
 	t := time.Now()
 	defer func() {
 		if queryOpt.SlowQueryMillisecond > 0 && time.Since(t).Milliseconds() > queryOpt.SlowQueryMillisecond {
-			log.Println("query slow query", query, "queryOpt", queryOpt)
+			dslJSON := c.buildDSL(query, from, size, queryOpt)
+			c.dslLog.Warn("es slow query",
+				Field("dsl", dslJSON),
+				Field("routing", routing),
+				Field("took_ms", time.Since(t).Milliseconds()),
+			)
 		}
 	}()
 	searchService := c.Client.Search().Index(indexName).Query(query).AllowPartialSearchResults(true)
@@ -192,7 +198,49 @@ func (c *Client) Query(ctx context.Context, indexName string, routing string, qu
 	if size > 0 {
 		searchService.Size(size)
 	}
+
+	// DSL 日志输出
+	if c.DebugMode || c.QueryLogEnable || queryOpt.EnableDSL {
+		dslJSON := c.buildDSL(query, from, size, queryOpt)
+		c.dslLog.Info("es query", Field("dsl", dslJSON), Field("routing", routing))
+	}
+
 	return searchService.Do(ctx)
+}
+
+// buildDSL 构造查询体 JSON 用于日志输出
+func (c *Client) buildDSL(query *types.Query, from, size int, queryOpt *queryOption) string {
+	dsl := map[string]interface{}{}
+	if query != nil {
+		dsl["query"] = query
+	}
+	if from > 0 {
+		dsl["from"] = from
+	}
+	if size > 0 {
+		dsl["size"] = size
+	}
+	if len(queryOpt.Orders) > 0 {
+		sortArr := make([]map[string]string, 0, len(queryOpt.Orders))
+		for _, orderM := range queryOpt.Orders {
+			for field, order := range orderM {
+				dir := "asc"
+				if !order {
+					dir = "desc"
+				}
+				sortArr = append(sortArr, map[string]string{field: dir})
+			}
+		}
+		dsl["sort"] = sortArr
+	}
+	if queryOpt.Highlight != nil {
+		dsl["highlight"] = queryOpt.Highlight
+	}
+	if queryOpt.Profile {
+		dsl["profile"] = true
+	}
+	data, _ := json.Marshal(dsl)
+	return string(data)
 }
 
 func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, query *types.Query, size int, callback func(res *scroll.Response, err error), options ...QueryOption) error {
@@ -269,21 +317,16 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 	}
 
 	scrollID := *res.ScrollId_
-	//b, e := res.Hits.Hits[0].Source_.MarshalJSON()
-	//log.Println(string(b), e)
 
 	// 使用 Scroll API 获取剩余结果
 	for {
-		//log.Println(scrollID)
 		result, err := c.Client.Scroll().Scroll("1m").ScrollId(scrollID).Do(ctx)
 		callback(result, err)
 		//执行上面的scroll后会返回一个新的scrollId，旧的scrollId需要清除掉
 
-		//b, e := result.Hits.Hits[0].Source_.MarshalJSON()
-		//log.Println(string(b), e)
 		if err != nil {
-			log.Fatalf("Cannot execute scroll query:%s", err)
-			return err
+			c.log.Error("cannot execute scroll query", ErrField(err))
+			return fmt.Errorf("scroll query failed: %w", err)
 		}
 		if len(result.Hits.Hits) == 0 {
 			break
@@ -294,7 +337,7 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 		if currentScrollId != *result.ScrollId_ {
 			r, e := c.Client.ClearScroll().ScrollId(scrollID).Do(ctx)
 			if e != nil {
-				log.Println(r, e)
+				c.log.Error("clear scroll context failed", ErrField(e), Field("response", r))
 			}
 		}
 		//更新scrollId，下次请求需要带上这个scrollId，以便继续获取剩余结果

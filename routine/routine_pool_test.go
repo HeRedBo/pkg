@@ -18,7 +18,6 @@ func TestRoutinePoolPanict(t *testing.T) {
 	success := false
 	routineFunc := func() {
 		success = true
-		routineLogger.Printf("panicFunc exec")
 	}
 	PutTask(routineFunc)
 	time.Sleep(time.Millisecond * 50)
@@ -55,7 +54,6 @@ func TestRoutineTimeout(t *testing.T) {
 		jobCnt++
 		l.Unlock()
 		time.Sleep(jobTimeout * 4) // 4倍的最大任务超时
-		routineLogger.Printf("Long-Time Job Done -------cnt=%v--", jobCnt)
 	}
 	expect := 0
 	for i := 0; i < numWorkers*jobQueueLen; i++ {

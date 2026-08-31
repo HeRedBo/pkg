@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/redis/go-redis/v9"
 	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // RedisConfig 定义 Redis 配置
@@ -28,10 +29,20 @@ func (c *Config) IsCluste() bool {
 // Client 定义 Redis 客户端结构体
 type Client struct {
 	client redis.UniversalClient
+	log    Logger
 }
 
 // NewRedisClient 创建 Redis 客户端实例
-func NewRedisClient(config Config) (*Client, error) {
+func NewRedisClient(config Config, opts ...Option) (*Client, error) {
+	// 解析 options
+	o := &option{}
+	for _, f := range opts {
+		if f != nil {
+			f(o)
+		}
+	}
+	logger := getLogger(o.logger)
+
 	var client redis.UniversalClient
 	if config.IsCluste() {
 		client = redis.NewClusterClient(&redis.ClusterOptions{
@@ -55,6 +66,7 @@ func NewRedisClient(config Config) (*Client, error) {
 
 	return &Client{
 		client: client,
+		log:    logger,
 	}, nil
 }
 
@@ -117,7 +129,7 @@ func (r *Client) IsExist(ctx context.Context, key string) bool {
 	value, err := r.client.Exists(ctx, key).Result()
 	if err != nil && err != redis.Nil {
 		// TODO 记录日志
-		fmt.Println(err)
+		r.log.Error("redis exists error", ErrField(err))
 	}
 	return value > 0
 }

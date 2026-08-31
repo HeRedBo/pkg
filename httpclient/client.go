@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"github.com/HeRedBo/pkg/errors"
 	"github.com/HeRedBo/pkg/trace"
-	"go.uber.org/zap"
 	"io/ioutil"
 	"net/http"
 	httpURL "net/url"
@@ -104,9 +103,8 @@ func doHTTP(ctx context.Context, method, url string, payload []byte, opt *option
 			})
 		}
 
-		if opt.logger != nil {
-			opt.logger.Warn("doHTTP got err", zap.Error(err))
-		}
+		logger := getLogger(opt.logger)
+		logger.Warn("doHTTP got err", ErrField(err))
 		return nil, _StatusDoReqErr, err
 	}
 	defer resp.Body.Close()
@@ -121,9 +119,8 @@ func doHTTP(ctx context.Context, method, url string, payload []byte, opt *option
 			})
 		}
 
-		if opt.logger != nil {
-			opt.logger.Warn("doHTTP got err", zap.Error(err))
-		}
+		logger := getLogger(opt.logger)
+		logger.Warn("doHTTP got err", ErrField(err))
 		return nil, _StatusReadRespErr, err
 	}
 	defer func() {
@@ -212,9 +209,7 @@ func withoutBody(method, url string, form httpURL.Values, options ...Option) (ht
 	}
 
 	defer func() {
-		if opt.logger == nil {
-			return
-		}
+		logger := getLogger(opt.logger)
 		info := &struct {
 			TraceID string `json:"trace_id"`
 			Request struct {
@@ -241,7 +236,7 @@ func withoutBody(method, url string, form httpURL.Values, options ...Option) (ht
 		}
 
 		raw, _ := json.MarshalIndent(info, "", " ")
-		opt.logger.Warn(string(raw))
+		logger.Warn("http client request log", Field("detail", string(raw)))
 
 	}()
 
@@ -320,9 +315,7 @@ func withFormBody(method, url string, form httpURL.Values, options ...Option) (h
 	}
 
 	defer func() {
-		if opt.logger == nil {
-			return
-		}
+		logger := getLogger(opt.logger)
 		info := &struct {
 			TraceID string `json:"trace_id"`
 			Request struct {
@@ -349,7 +342,7 @@ func withFormBody(method, url string, form httpURL.Values, options ...Option) (h
 		}
 
 		raw, _ := json.MarshalIndent(info, "", " ")
-		opt.logger.Warn(string(raw))
+		logger.Warn("http client request log", Field("detail", string(raw)))
 
 	}()
 
@@ -427,7 +420,7 @@ func withJSONBody(method, url string, raw json.RawMessage, options ...Option) (h
 	}
 
 	defer func() {
-
+		logger := getLogger(opt.logger)
 		info := &struct {
 			TraceID string `json:"trace_id"`
 			Request struct {
@@ -454,7 +447,7 @@ func withJSONBody(method, url string, raw json.RawMessage, options ...Option) (h
 		}
 
 		raw, _ := json.MarshalIndent(info, "", " ")
-		opt.logger.Warn(string(raw))
+		logger.Warn("http client request log", Field("detail", string(raw)))
 
 	}()
 

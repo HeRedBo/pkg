@@ -3,28 +3,27 @@ package routine
 import (
 	"context"
 	"fmt"
-	"github.com/HeRedBo/pkg/errors"
-	"log"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/HeRedBo/pkg/errors"
+	"github.com/HeRedBo/pkg/logx"
 )
 
-// region 定义日志接口
-type stdLogger interface {
-	Print(v ...interface{})
-	Printf(format string, v ...interface{})
-	Println(v ...interface{})
+// option 协程池配置项
+type option struct {
+	logger logx.Logger
 }
 
-// endregion
+// Option 函数式选项
+type Option func(*option)
 
-// 初始化默认日志器
-var routineLogger stdLogger
-
-func init() {
-	routineLogger = log.New(os.Stdout, "[Routine] ", log.LstdFlags|log.Lshortfile)
+// WithLogger 通过 Option 注入 Logger（优先级最高）
+func WithLogger(l logx.Logger) Option {
+	return func(opt *option) {
+		opt.logger = l
+	}
 }
 
 var defaultPool *Pool
@@ -108,9 +107,14 @@ type Pool struct {
 	exit           chan bool
 	stopping       bool
 	running        bool
+	log            logx.Logger
 }
 
-func InitPoolWithName(name string, numWorkers int, maxJobQueuelen int, maxJobTimeout time.Duration) *Pool {
+func InitPoolWithName(name string, numWorkers int, maxJobQueuelen int, maxJobTimeout time.Duration, opts ...Option) *Pool {
+	o := &option{}
+	for _, opt := range opts {
+		opt(o)
+	}
 	p := &Pool{
 		Name:          name,
 		JobQueue:      make(chan Task, maxJobQueuelen),
@@ -118,6 +122,7 @@ func InitPoolWithName(name string, numWorkers int, maxJobQueuelen int, maxJobTim
 		numWorkers:    numWorkers,
 		maxJobTimeout: maxJobTimeout,
 		exit:          make(chan bool, 1),
+		log:           getLogger(o.logger),
 	}
 	for i := 0; i < numWorkers; i++ {
 		p.workers[i] = &worker{make(chan bool, 1), 0}
@@ -125,8 +130,8 @@ func InitPoolWithName(name string, numWorkers int, maxJobQueuelen int, maxJobTim
 	return p
 }
 
-func NewPool(numWorkers int, maxJobQueuelen int, maxJobTimeout time.Duration) *Pool {
-	return InitPoolWithName("default", numWorkers, maxJobQueuelen, maxJobTimeout)
+func NewPool(numWorkers int, maxJobQueuelen int, maxJobTimeout time.Duration, opts ...Option) *Pool {
+	return InitPoolWithName("default", numWorkers, maxJobQueuelen, maxJobTimeout, opts...)
 }
 
 func (p *Pool) QueueLen() int {
@@ -143,7 +148,8 @@ func (p *Pool) Put(f Function) bool {
 
 func (p *Pool) PutWait(f Function) {
 	if p.stopping {
-		routineLogger.Printf("routinepool[%v] was stopping, can not PutWait(task).", p.Name)
+		p.log.Warn("routinepool was stopping, can not PutWait(task).",
+			Field("pool", p.Name))
 		return
 	}
 	p.JobQueue <- f
@@ -151,7 +157,8 @@ func (p *Pool) PutWait(f Function) {
 
 func (p *Pool) put(task Task) bool {
 	if p.stopping {
-		routineLogger.Printf("routinepool[%v] was stopping, can not put(task).", p.Name)
+		p.log.Warn("routinepool was stopping, can not put(task).",
+			Field("pool", p.Name))
 		return false
 	}
 	p.checkRunningPanic()
@@ -159,8 +166,8 @@ func (p *Pool) put(task Task) bool {
 	case p.JobQueue <- task:
 		return true
 	default:
-		routineLogger.Print("routinepool Put(%s) queue.cap=[%v],len=[%v] is overflowing.",
-			p.Name, cap(p.JobQueue), p.QueueLen())
+		p.log.Warn("routinepool Put queue is overflowing.",
+			Field("pool", p.Name), Field("cap", cap(p.JobQueue)), Field("len", p.QueueLen()))
 		return false
 	}
 }
@@ -176,8 +183,8 @@ func (p *Pool) executeJob(task Task, timeout time.Duration) {
 	if p.currGorountine >= int64(p.numWorkers*4) {
 		time.Sleep(3 * time.Second)
 		p.reput(task)
-		routineLogger.Printf("routinepool[%s] numWorkers=[%v] but gorountine[%v] was running, re-put the job.",
-			p.Name, p.numWorkers, p.currGorountine)
+		p.log.Warn("routinepool goroutine count exceeded 4x workers, re-putting job.",
+			Field("pool", p.Name), Field("numWorkers", p.numWorkers), Field("goroutine", p.currGorountine))
 		return
 	}
 	var ctx context.Context
@@ -197,16 +204,17 @@ func (p *Pool) executeJob(task Task, timeout time.Duration) {
 			e := recover()
 			if e != nil {
 				s := errors.Stack(2)
-				log.Fatalf("routinepool[%v] Panic: %v\nTraceback\r:%s",
-					p.Name, e, string(s))
+				p.log.Error("routinepool panic recovered.",
+				Field("pool", p.Name), Field("panic", fmt.Sprintf("%v", e)), Field("traceback", string(s)))
+				panic(e)
 			}
 		}()
 
 		start := time.Now()
 		task.Execute()
 		if timeout > 0 && time.Since(start) > timeout {
-			routineLogger.Printf("Job runing timeout, limit[%v] used-time[%v] in routinepool[%v]",
-				timeout, time.Since(start), p.Name)
+			p.log.Warn("Job running timeout.",
+				Field("pool", p.Name), Field("limit", timeout), Field("used", time.Since(start)))
 		}
 	}()
 
@@ -233,15 +241,16 @@ func (p *Pool) Start() {
 func (p *Pool) checkRunningPanic() {
 	if !p.running {
 		msg := fmt.Sprintf("Pool.Start() must be called before run the routinepool[%v].", p.Name)
-		routineLogger.Printf(msg)
+		p.log.Warn("Pool.Start() must be called before running the routinepool.",
+			Field("pool", p.Name))
 		panic(msg)
 	}
 }
 
 func (p *Pool) run(n int) {
-	// routineLogger.Printf("worker[%v] start loop.", n)
-	defer routineLogger.Printf("routinepool[%v] worker[%v].Done=[%v] exist loop. JobQueue.len=[%v]",
-		p.Name, n, p.workers[n].Done, p.QueueLen())
+	// p.log.Info("worker start loop.", Field("worker", n))
+	defer p.log.Info("routinepool worker exit loop.",
+		Field("pool", p.Name), Field("worker", n), Field("done", p.workers[n].Done), Field("queueLen", p.QueueLen()))
 
 	defer p.wg.Done()
 	p.wg.Add(1)
@@ -255,7 +264,8 @@ func (p *Pool) run(n int) {
 			p.executeJob(task, p.maxJobTimeout)
 			worker.Done += 1
 		case stop = <-worker.Stop:
-			routineLogger.Printf("routinepool[%v] worker[%v] stop=%v", p.Name, n, stop)
+			p.log.Info("routinepool worker stop signal.",
+				Field("pool", p.Name), Field("worker", n), Field("stop", stop))
 			stopTime = time.Now()
 			if !stop {
 				close(worker.Stop)
@@ -265,18 +275,18 @@ func (p *Pool) run(n int) {
 
 		if stop {
 			if p.QueueLen() == 0 {
-				routineLogger.Printf("worker[%v] exit-finish, currGorountine=[%v]",
-					n, p.currGorountine)
+				p.log.Info("worker exit finished.",
+					Field("worker", n), Field("goroutine", p.currGorountine))
 				break
 			}
 
 			if time.Since(stopTime) >= p.maxJobTimeout {
-				routineLogger.Printf("Exit-timeout[%v] Fail. [%v]jobs was not-finish!!!",
-					time.Since(stopTime), p.QueueLen())
+				p.log.Warn("Exit timeout, jobs not finished.",
+					Field("timeout", time.Since(stopTime)), Field("remaining", p.QueueLen()))
 				break
 			} else {
-				routineLogger.Printf("Worker[%v] exiting, [%v]jobs-queue still has-time[%v] to do it.",
-					n, p.QueueLen(), p.maxJobTimeout-time.Since(stopTime))
+				p.log.Info("Worker exiting, jobs still in queue.",
+					Field("worker", n), Field("queueLen", p.QueueLen()), Field("remaining", p.maxJobTimeout-time.Since(stopTime)))
 			}
 		}
 	}
@@ -291,13 +301,15 @@ func (p *Pool) Stop() {
 	close(p.exit)
 	p.wg.Wait()
 	if p.QueueLen() > 0 {
-		routineLogger.Printf("routinepool[%v] when Pool.stop() had [%v]jobs not-finish.", p.Name, p.QueueLen())
+		p.log.Info("routinepool stopped with unfinished jobs.",
+			Field("pool", p.Name), Field("remaining", p.QueueLen()))
 	}
 	var done int64 = 0
 	for i := 0; i < p.numWorkers; i++ {
 		done += p.workers[i].Done
 	}
-	routineLogger.Printf("Stop routine pool", p.Name, "currGorountine", p.currGorountine, "JobQueue len", p.QueueLen())
+	p.log.Info("Stop routine pool.",
+		Field("pool", p.Name), Field("goroutine", p.currGorountine), Field("queueLen", p.QueueLen()))
 }
 
 func (p *Pool) StopWait() {
@@ -307,9 +319,10 @@ func (p *Pool) StopWait() {
 		var done int64 = 0
 		for i := 0; i < p.numWorkers; i++ {
 			done += p.workers[i].Done
-			//routineLogger.Printf("Pool.Stop(%v) Called.", i)
+			//p.log.Info("Pool.Stop called.", Field("worker", i))
 		}
-		routineLogger.Printf("==--StopWait()--==> outinepool[%v] currGorountine[%v].Done=[%v] JobQueue.len=[%v]", p.Name, p.currGorountine, done, p.QueueLen())
+		p.log.Info("StopWait progress.",
+			Field("pool", p.Name), Field("goroutine", p.currGorountine), Field("done", done), Field("queueLen", p.QueueLen()))
 		time.Sleep(time.Second * 1)
 	}
 	p.Stop()

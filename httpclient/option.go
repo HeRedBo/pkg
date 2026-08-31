@@ -1,8 +1,8 @@
 package httpclient
 
 import (
+	"github.com/HeRedBo/pkg/logx"
 	"github.com/HeRedBo/pkg/trace"
-	"go.uber.org/zap"
 	"sync"
 	"time"
 )
@@ -28,7 +28,7 @@ type option struct {
 	header      map[string][]string
 	trace       *trace.Trace
 	dialog      *trace.Dialog
-	logger      *zap.Logger
+	logger      logx.Logger
 	retryTimes  int
 	retryDelay  time.Duration
 	retryVerify RetryVerify
@@ -81,7 +81,7 @@ func WithTrace(t trace.T) Option {
 }
 
 // WithLogger 设置logger以便打印关键日志
-func WithLogger(logger *zap.Logger) Option {
+func WithLogger(logger logx.Logger) Option {
 	return func(opt *option) {
 		opt.logger = logger
 	}
