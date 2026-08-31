@@ -3,7 +3,7 @@ module github.com/HeRedBo/pkg/db
 go 1.23.2
 
 require (
-	github.com/HeRedBo/pkg/logx v0.0.0
+	github.com/HeRedBo/pkg/logx v0.0.0-20260830141419-92011b3cc7d8
 	github.com/gookit/goutil v0.6.18
 	gorm.io/driver/mysql v1.5.7
 	gorm.io/gorm v1.25.12
@@ -23,4 +23,3 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 )
 
-replace github.com/HeRedBo/pkg/logx => ../logx
