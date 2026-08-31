@@ -17,7 +17,7 @@ type gormLogger struct {
 	level                     gormlogger.LogLevel
 	slowThreshold             time.Duration
 	ignoreRecordNotFoundError bool
-	enableSqlLog              bool // 是否启用 SQL 日志打印，默认关闭
+	enableSqlLog              bool // 是否启用 SQL 日志打印，默认关�?
 }
 
 // NewGormLogger 创建 gormLogger 适配器
@@ -94,14 +94,14 @@ func (l *gormLogger) Trace(ctx context.Context, begin time.Time, fc func() (sql 
 		return
 	}
 
-	// 普通 SQL 日志（需要显式开启）
+	// 普通SQL日志（需要显式开启）
 	if l.enableSqlLog && l.level >= gormlogger.Info {
 		fields := []logx.LogField{
 			logx.Field("sql", sql),
 			logx.Field("rows", rows),
 			logx.Field("elapsed", elapsed.String()),
 		}
-		l.sqlLogger.Debug("sql trace", fields...)
+		l.sqlLogger.Info("sql trace", fields...)
 	}
 }
 
