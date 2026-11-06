@@ -2,10 +2,11 @@ package errors
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"io"
 	"log"
 	"runtime"
+
+	"github.com/pkg/errors"
 )
 
 func callers() []uintptr {
@@ -47,7 +48,7 @@ func Errorf(format string, args ...interface{}) Error {
 }
 
 func Wrap(err error, format string, args ...interface{}) Error {
-	if err != nil {
+	if err == nil {
 		return nil
 	}
 	msg := fmt.Sprintf(format, args...)
