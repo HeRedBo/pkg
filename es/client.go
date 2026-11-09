@@ -16,14 +16,14 @@ import (
 var clients map[string]*Client
 
 type option struct {
-	QueryLogEnable              bool
-	GlobalSlowQueryMillisencond int64
-	Bulk                        *Bulk
-	DebugMode                   bool
-	Scheme                      string
-	EnableDSL                   bool
-	logger                      logx.Logger // 业务日志
-	dslLogger                   logx.Logger // DSL 日志（可与业务日志分离）
+	QueryLogEnable             bool
+	GlobalSlowQueryMillisecond int64
+	Bulk                       *Bulk
+	DebugMode                  bool
+	Scheme                     string
+	EnableDSL                  bool
+	logger                     logx.Logger // 业务日志
+	dslLogger                  logx.Logger // DSL 日志（可与业务日志分离）
 }
 
 type Option func(*option)
@@ -58,9 +58,15 @@ const (
 	SimpleClient = "simple-es-client"
 )
 
-func WithQueryLogEnable(enble bool) Option {
+func WithQueryLogEnable(enable bool) Option {
 	return func(opt *option) {
-		opt.QueryLogEnable = enble
+		opt.QueryLogEnable = enable
+	}
+}
+
+func WithSlowQueryLogMillisecond(slowQueryMillisecond int64) Option {
+	return func(opt *option) {
+		opt.GlobalSlowQueryMillisecond = slowQueryMillisecond
 	}
 }
 
@@ -107,7 +113,7 @@ func getBaseOptions(username, password string, urls ...string) []elastic.ClientO
 	return options
 }
 
-func InitClinet(clientName string, urls []string, username, password string) error {
+func InitClient(clientName string, urls []string, username, password string) error {
 	if clients == nil {
 		clients = make(map[string]*Client, 0)
 	}
@@ -194,7 +200,7 @@ func InitSimpleClient(urls []string, username, password string, options ...Optio
 	clitent.BulkProcessor, err = esClient.BulkProcessor().
 		Name(clitent.Bulk.Name).
 		Workers(clitent.Bulk.Workers).
-		BulkSize(clitent.Bulk.ActionSize).
+		BulkActions(clitent.Bulk.ActionSize).
 		BulkSize(clitent.Bulk.RequestSize).
 		FlushInterval(clitent.Bulk.FlushInterval).
 		Stats(true).
@@ -333,7 +339,7 @@ func (c *Client) newClient(options []elastic.ClientOptionFunc) error {
 	c.BulkProcessor, err = c.Client.BulkProcessor().
 		Name(c.Bulk.Name).
 		Workers(c.Bulk.Workers).
-		BulkSize(c.Bulk.ActionSize).
+		BulkActions(c.Bulk.ActionSize).
 		BulkSize(c.Bulk.RequestSize).
 		FlushInterval(c.Bulk.FlushInterval).
 		Stats(true).

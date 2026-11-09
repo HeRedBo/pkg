@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+
 	"github.com/elastic/go-elasticsearch/v8/esapi"
 	"github.com/elastic/go-elasticsearch/v8/esutil"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/core/delete"
@@ -15,7 +17,6 @@ import (
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/conflicts"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/optype"
 	"github.com/elastic/go-elasticsearch/v8/typedapi/types/enums/refresh"
-	"strings"
 )
 
 const (
@@ -25,15 +26,22 @@ const (
 	RefreshWaitFor      = "wait_for"
 	RefreshTrue         = "true"
 	DefaultScriptLang   = "painless"
-	Bulk
-	OpTypeCreate = "create"
-	OpTypeIndex  = "index"
-	OpTypeUpsert = "upsert"
-	OpTypeUpdate = "update"
-	OpTypeDelete = "delete"
+	OpTypeCreate        = "create"
+	OpTypeIndex         = "index"
+	OpTypeUpsert        = "upsert"
+	OpTypeUpdate        = "update"
+	OpTypeDelete        = "delete"
 )
 
 type BulkIndexerOnFailure func(context.Context, esutil.BulkIndexerItem, esutil.BulkIndexerResponseItem, error)
+
+// BulkUpsertDoc 批量 upsert 操作的文档描述
+type BulkUpsertDoc struct {
+	ID      string
+	Routing string
+	Doc     interface{}
+	Update  map[string]interface{}
+}
 
 // Insert 新建文档
 func (c *Client) Insert(ctx context.Context, indexName, id, routing, action string, doc interface{}) (*index.Response, error) {
@@ -162,7 +170,7 @@ func (c *Client) DeleteByQuery(ctx context.Context, indexName, routing, preferen
 	return deleteService.Query(query).Do(ctx)
 }
 
-func (c *Client) BulkDelte(ctx context.Context, indexName, id, routing string, onFailure BulkIndexerOnFailure) error {
+func (c *Client) BulkDelete(ctx context.Context, indexName, id, routing string, onFailure BulkIndexerOnFailure) error {
 	if len(id) == 0 {
 		return errors.New("_doc is required")
 	}
@@ -211,4 +219,100 @@ func (c *Client) UpdateByQuery(ctx context.Context, indexName, routing, preferen
 		updateService.Preference(preference)
 	}
 	return updateService.Query(query).Do(ctx)
+}
+
+// BulkCreateWithVersion 带版本号的批量创建文档
+func (c *Client) BulkCreateWithVersion(ctx context.Context, indexName, id, routing string, version int64, doc interface{}, onFailure BulkIndexerOnFailure) error {
+	jsonDoc, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	bulkIndexerItem := esutil.BulkIndexerItem{}
+	bulkIndexerItem.Index = indexName
+	if len(id) > 0 {
+		bulkIndexerItem.DocumentID = id
+	}
+	if len(routing) > 0 {
+		bulkIndexerItem.Routing = routing
+	}
+	bulkIndexerItem.Action = OpTypeCreate
+	bulkIndexerItem.Version = &version
+	bulkIndexerItem.VersionType = DefaultVersionType
+	bulkIndexerItem.Body = strings.NewReader(string(jsonDoc))
+	bulkIndexerItem.OnFailure = onFailure
+	return c.BulkProcessor.Add(ctx, bulkIndexerItem)
+}
+
+// BulkDeleteWithVersion 带版本号的批量删除文档
+func (c *Client) BulkDeleteWithVersion(ctx context.Context, indexName, id, routing string, version int64, onFailure BulkIndexerOnFailure) error {
+	if len(id) == 0 {
+		return errors.New("_doc is required")
+	}
+	bulkIndexerItem := esutil.BulkIndexerItem{}
+	bulkIndexerItem.Index = indexName
+	bulkIndexerItem.DocumentID = id
+	if len(routing) > 0 {
+		bulkIndexerItem.Routing = routing
+	}
+	bulkIndexerItem.Action = OpTypeDelete
+	bulkIndexerItem.Version = &version
+	bulkIndexerItem.VersionType = DefaultVersionType
+	bulkIndexerItem.OnFailure = onFailure
+	return c.BulkProcessor.Add(ctx, bulkIndexerItem)
+}
+
+// BulkUpsert 单条 upsert（后台批量提交）
+func (c *Client) BulkUpsert(ctx context.Context, indexName, id, routing string, update map[string]interface{}, doc interface{}, onFailure BulkIndexerOnFailure) error {
+	if len(id) == 0 {
+		return errors.New("_doc id is required")
+	}
+	upsertBody := map[string]interface{}{
+		"doc":           update,
+		"doc_as_upsert": true,
+		"upsert":        doc,
+	}
+	jsonDoc, err := json.Marshal(upsertBody)
+	if err != nil {
+		return err
+	}
+	bulkIndexerItem := esutil.BulkIndexerItem{}
+	bulkIndexerItem.Index = indexName
+	bulkIndexerItem.DocumentID = id
+	if len(routing) > 0 {
+		bulkIndexerItem.Routing = routing
+	}
+	bulkIndexerItem.Action = OpTypeUpdate
+	bulkIndexerItem.Body = strings.NewReader(string(jsonDoc))
+	bulkIndexerItem.OnFailure = onFailure
+	return c.BulkProcessor.Add(ctx, bulkIndexerItem)
+}
+
+// BulkUpsertDocs 批量 upsert 文档集
+func (c *Client) BulkUpsertDocs(ctx context.Context, indexName string, docs []*BulkUpsertDoc, onFailure BulkIndexerOnFailure) error {
+	for _, doc := range docs {
+		upsertBody := map[string]interface{}{
+			"doc":           doc.Update,
+			"doc_as_upsert": true,
+			"upsert":        doc.Doc,
+		}
+		jsonDoc, err := json.Marshal(upsertBody)
+		if err != nil {
+			return err
+		}
+		bulkIndexerItem := esutil.BulkIndexerItem{}
+		bulkIndexerItem.Index = indexName
+		if len(doc.ID) > 0 {
+			bulkIndexerItem.DocumentID = doc.ID
+		}
+		if len(doc.Routing) > 0 {
+			bulkIndexerItem.Routing = doc.Routing
+		}
+		bulkIndexerItem.Action = OpTypeUpdate
+		bulkIndexerItem.Body = strings.NewReader(string(jsonDoc))
+		bulkIndexerItem.OnFailure = onFailure
+		if err := c.BulkProcessor.Add(ctx, bulkIndexerItem); err != nil {
+			return err
+		}
+	}
+	return nil
 }

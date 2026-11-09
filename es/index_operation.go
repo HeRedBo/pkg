@@ -33,8 +33,8 @@ func (c *Client) CreateIndex(ctx context.Context, indexName string, bodyJson str
 	// 如果重复创建会报错
 	_, err = c.Client.CreateIndex(indexName).BodyString(bodyJson).Do(ctx)
 	if err != nil {
-		c.CacheIndices.Store(indexName, true)
+		return err // 创建失败，返回错误
 	}
+	c.CacheIndices.Store(indexName, true) // 创建成功，缓存
 	return nil
-
 }

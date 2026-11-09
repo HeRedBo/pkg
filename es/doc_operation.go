@@ -8,12 +8,12 @@ import (
 
 const (
 	DefaultClient       = "es-default-client"
-	DefaultReaDClient   = "es-default-read-client"
+	DefaultReadClient   = "es-default-read-client"
 	DefaultWriteClient  = "es-default-write-client"
 	DefaultVersionType  = "external"
 	VersionTypeInternal = "internal"
 	DefaultRefresh      = "false"
-	RefreshWaiterFor    = "wait_for"
+	RefreshWaitFor      = "wait_for"
 	RefreshTrue         = "true"
 	DefaultScriptLang   = "painless"
 )
@@ -83,7 +83,7 @@ func (c *Client) BulkCreateDocs(ctx context.Context, indexName string, docs []*B
 func (c *Client) BulkReplace(indexName, id, routing string, doc interface{}) {
 	bulkCreateRequest := elastic.NewBulkIndexRequest().Index(indexName).Doc(doc)
 	if len(id) > 0 {
-		bulkCreateRequest.Id(routing)
+		bulkCreateRequest.Id(id)
 	}
 	if len(routing) > 0 {
 		bulkCreateRequest.Routing(routing)
@@ -117,7 +117,7 @@ func (c *Client) BulkReplaceDocs(ctx context.Context, indexName string, docs []*
 func (c *Client) BulkCreateWithVersion(ctx context.Context, indexName, id, routing string, version int64, doc interface{}) {
 	bulkCreateRequest := elastic.NewBulkIndexRequest().Index(indexName).Doc(doc).VersionType(DefaultVersionType).Version(version)
 	if len(id) > 0 {
-		bulkCreateRequest.Id(routing)
+		bulkCreateRequest.Id(id)
 	}
 	if len(routing) > 0 {
 		bulkCreateRequest.Routing(routing)
@@ -167,16 +167,16 @@ func (c *Client) DeleteByQuery(ctx context.Context, indexName, id, routing strin
 func (c *Client) BulkDelete(indexName, id, routing string) {
 	bulkDeleteRequest := elastic.NewBulkDeleteRequest().Index(indexName).Id(id)
 	if len(routing) > 0 {
-		bulkDeleteRequest.Id(routing)
+		bulkDeleteRequest.Routing(routing)
 	}
 	c.BulkProcessor.Add(bulkDeleteRequest)
 }
 
-func (c *Client) BulkDeleteWithVersion(indexName, id, routing string, verion int64) {
+func (c *Client) BulkDeleteWithVersion(indexName, id, routing string, version int64) {
 	bulkDeleteRequest := elastic.NewBulkDeleteRequest().Index(indexName).
-		Id(id).VersionType(DefaultVersionType).Version(verion)
+		Id(id).VersionType(DefaultVersionType).Version(version)
 	if len(routing) > 0 {
-		bulkDeleteRequest.Id(routing)
+		bulkDeleteRequest.Routing(routing)
 	}
 	c.BulkProcessor.Add(bulkDeleteRequest)
 }
@@ -200,10 +200,10 @@ func (c *Client) UpdateByQuery(ctx context.Context, indexName string, routings [
 	return updateByQueryService.Do(ctx)
 }
 
-func (c *Client) BulkUpdataeDocs(ctx context.Context, index string, updates []*BulkUpdateDoc) (*elastic.BulkResponse, error) {
+func (c *Client) BulkUpdateDocs(ctx context.Context, index string, updates []*BulkUpdateDoc) (*elastic.BulkResponse, error) {
 	bulkService := c.Client.Bulk().ErrorTrace(true).Refresh(DefaultRefresh)
 	for _, update := range updates {
-		doc := elastic.NewBulkUpdateRequest().Id(update.ID).Doc(update.update)
+		doc := elastic.NewBulkUpdateRequest().Index(index).Id(update.ID).Doc(update.update)
 		if len(update.Routing) > 0 {
 			doc.Routing(update.Routing)
 		}

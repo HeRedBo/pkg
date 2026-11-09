@@ -3,14 +3,15 @@ package v8
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/elastic/go-elasticsearch/v8"
 	"github.com/elastic/go-elasticsearch/v8/esutil"
-	"github.com/olivere/elastic/v7"
 
 	"github.com/HeRedBo/pkg/logx"
 )
@@ -18,28 +19,27 @@ import (
 var clients map[string]*Client
 
 type Client struct {
-	Name           string
-	Addr           []string
-	QueryLogEnable bool
-	Username       string
-	password       string
-	BulkCfg        *BulkCfg
-	Client         *elasticsearch.TypedClient
-	BulkProcessor  esutil.BulkIndexer
-	DebugMode      bool
-	CacheIndices   sync.Map
-	lock           sync.Mutex
-	log            logx.Logger
-	dslLog         logx.Logger
+	Name                     string
+	Addr                     []string
+	QueryLogEnable           bool
+	GlobalSlowQueryMillisecond int64
+	Username                 string
+	password                 string
+	BulkCfg                  *BulkCfg
+	Client                   *elasticsearch.TypedClient
+	BulkProcessor            esutil.BulkIndexer
+	DebugMode                bool
+	CacheIndices             sync.Map
+	lock                     sync.Mutex
+	log                      logx.Logger
+	dslLog                   logx.Logger
 }
 
 type BulkCfg struct {
 	Workers       int
 	FlushInterval time.Duration
-	ActionSize    int // 每批提交的文档数
+	ActionSize    int // 每批提交的文档数（注意：当前 esutil.BulkIndexerConfig 不支持此配置，仅作为记录保留）
 	RequestSize   int // 每批提交的文档大小
-	AfterFunc     elastic.BulkAfterFunc
-	Ctx           context.Context
 }
 
 // 定义常量
@@ -47,12 +47,18 @@ const (
 	DefaultClient      = "es-default-client"
 	DefaultReadClient  = "es-default-read-client"
 	DefaultWriteClient = "es-default-write-client"
+	SimpleClient       = "simple-es-client"
 )
 
 // option 连接配置项
 type option struct {
-	logger    logx.Logger // 业务日志
-	dslLogger logx.Logger // DSL 查询日志（可与业务日志分离）
+	QueryLogEnable             bool
+	GlobalSlowQueryMillisecond int64
+	Bulk                       *BulkCfg
+	DebugMode                  bool
+	Scheme                     string
+	logger                     logx.Logger // 业务日志
+	dslLogger                  logx.Logger // DSL 查询日志（可与业务日志分离）
 }
 
 // Option 函数式选项
@@ -72,8 +78,52 @@ func WithDSLLogger(l logx.Logger) Option {
 	}
 }
 
-func InitClient(clientName string, addr []string, username, password string, opts ...Option) error {
+// WithQueryLogEnable 开启查询日志
+func WithQueryLogEnable(enable bool) Option {
+	return func(opt *option) {
+		opt.QueryLogEnable = enable
+	}
+}
 
+// WithSlowQueryLogMillisecond 设置全局慢查询阈值（毫秒）
+func WithSlowQueryLogMillisecond(ms int64) Option {
+	return func(opt *option) {
+		opt.GlobalSlowQueryMillisecond = ms
+	}
+}
+
+// WithDebugMode 开启调试模式
+func WithDebugMode(debug bool) Option {
+	return func(opt *option) {
+		opt.DebugMode = debug
+	}
+}
+
+// WithScheme 设置连接 scheme（如 https）
+func WithScheme(scheme string) Option {
+	return func(opt *option) {
+		opt.Scheme = scheme
+	}
+}
+
+// WithBulk 设置 BulkIndexer 配置
+func WithBulk(bulk *BulkCfg) Option {
+	return func(opt *option) {
+		opt.Bulk = bulk
+	}
+}
+
+// DefaultBulkCfg 返回默认的 BulkCfg 配置
+func DefaultBulkCfg() *BulkCfg {
+	return &BulkCfg{
+		Workers:       3,
+		FlushInterval: 3 * time.Second,
+		ActionSize:    500,
+		RequestSize:   5 << 20, // 5 MB
+	}
+}
+
+func InitClient(clientName string, addr []string, username, password string, opts ...Option) error {
 	if clients == nil {
 		clients = make(map[string]*Client, 0)
 	}
@@ -87,21 +137,28 @@ func InitClient(clientName string, addr []string, username, password string, opt
 
 	logger := getLogger(opt.logger)
 	dslLogger := getLogger(opt.dslLogger)
-	if dslLogger == logger {
-		dslLogger = logger
+
+	bulkCfg := opt.Bulk
+	if bulkCfg == nil {
+		bulkCfg = DefaultBulkCfg()
 	}
 
 	client := &Client{
-		Addr:           addr,
-		QueryLogEnable: false,
-		Username:       username,
-		password:       password,
-		CacheIndices:   sync.Map{},
-		lock:           sync.Mutex{},
-		log:            logger,
-		dslLog:         dslLogger,
+		Name:                       clientName,
+		Addr:                       addr,
+		QueryLogEnable:             opt.QueryLogEnable,
+		GlobalSlowQueryMillisecond: opt.GlobalSlowQueryMillisecond,
+		Username:                   username,
+		password:                   password,
+		BulkCfg:                    bulkCfg,
+		DebugMode:                  opt.DebugMode,
+		CacheIndices:               sync.Map{},
+		lock:                       sync.Mutex{},
+		log:                        logger,
+		dslLog:                     dslLogger,
 	}
-	cfg := getBaseCfg(username, password, addr)
+
+	cfg := getBaseCfg(username, password, applyScheme(addr, opt.Scheme))
 	esClient, err := elasticsearch.NewTypedClient(cfg)
 	if err != nil {
 		return err
@@ -114,7 +171,9 @@ func InitClient(clientName string, addr []string, username, password string, opt
 	bulkLog := logger
 	bi, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
 		Client:        esBulkClient,
-		FlushInterval: 3 * time.Second,
+		NumWorkers:    bulkCfg.Workers,
+		FlushBytes:    bulkCfg.RequestSize,
+		FlushInterval: bulkCfg.FlushInterval,
 		ErrorTrace:    true,
 		OnError: func(ctx context.Context, err error) {
 			if err != nil {
@@ -122,7 +181,6 @@ func InitClient(clientName string, addr []string, username, password string, opt
 			}
 		},
 	})
-
 	if err != nil {
 		return err
 	}
@@ -175,6 +233,10 @@ func GetDefaultClient() *http.Client {
 	return &http.Client{Transport: tr}
 }
 
+func InitSimpleClient(addr []string, username, password string, opts ...Option) error {
+	return InitClient(SimpleClient, addr, username, password, opts...)
+}
+
 func InitClientWithCfg(clientName string, cfg elasticsearch.Config, queryLogEnable bool, bulk BulkCfg, opts ...Option) error {
 	if clients == nil {
 		clients = make(map[string]*Client, 0)
@@ -189,23 +251,30 @@ func InitClientWithCfg(clientName string, cfg elasticsearch.Config, queryLogEnab
 
 	logger := getLogger(opt.logger)
 	dslLogger := getLogger(opt.dslLogger)
-	if dslLogger == logger {
-		dslLogger = logger
+
+	bulkCfg := &bulk
+	if opt.Bulk != nil {
+		bulkCfg = opt.Bulk
 	}
 
 	client := &Client{
-		Addr:           cfg.Addresses,
-		QueryLogEnable: false,
-		Username:       cfg.Username,
-		password:       cfg.Password,
-		BulkCfg:        &bulk,
-		CacheIndices:   sync.Map{},
-		lock:           sync.Mutex{},
-		log:            logger,
-		dslLog:         dslLogger,
+		Name:                       clientName,
+		Addr:                       cfg.Addresses,
+		QueryLogEnable:             queryLogEnable,
+		GlobalSlowQueryMillisecond: opt.GlobalSlowQueryMillisecond,
+		Username:                   cfg.Username,
+		password:                   cfg.Password,
+		BulkCfg:                    bulkCfg,
+		DebugMode:                  opt.DebugMode,
+		CacheIndices:               sync.Map{},
+		lock:                       sync.Mutex{},
+		log:                        logger,
+		dslLog:                     dslLogger,
 	}
-	client.QueryLogEnable = queryLogEnable
-	client.BulkCfg = &bulk
+
+	if len(opt.Scheme) > 0 {
+		cfg.Addresses = applyScheme(cfg.Addresses, opt.Scheme)
+	}
 
 	esClient, err := elasticsearch.NewTypedClient(cfg)
 	if err != nil {
@@ -219,9 +288,9 @@ func InitClientWithCfg(clientName string, cfg elasticsearch.Config, queryLogEnab
 	bulkLog := logger
 	bi, err := esutil.NewBulkIndexer(esutil.BulkIndexerConfig{
 		Client:        esBulkClient,
-		NumWorkers:    bulk.Workers,
-		FlushBytes:    bulk.RequestSize,
-		FlushInterval: bulk.FlushInterval,
+		NumWorkers:    bulkCfg.Workers,
+		FlushBytes:    bulkCfg.RequestSize,
+		FlushInterval: bulkCfg.FlushInterval,
 		ErrorTrace:    true,
 		OnError: func(ctc context.Context, err error) {
 			if err != nil {
@@ -229,7 +298,6 @@ func InitClientWithCfg(clientName string, cfg elasticsearch.Config, queryLogEnab
 			}
 		},
 	})
-
 	if err != nil {
 		return err
 	}
@@ -242,6 +310,22 @@ func InitClientWithCfg(clientName string, cfg elasticsearch.Config, queryLogEnab
 
 func (c *Client) Close(ctx context.Context) error {
 	return c.BulkProcessor.Close(ctx)
+}
+
+func (c *Client) AddIndexCache(indexName ...string) {
+	for _, index := range indexName {
+		c.CacheIndices.Store(index, true)
+	}
+}
+
+func (c *Client) DeleteIndexCache(indexName ...string) {
+	for _, index := range indexName {
+		c.CacheIndices.Delete(index)
+	}
+}
+
+func GetSimpleClient() *Client {
+	return GetClient(SimpleClient)
 }
 
 func CloseAll() {
@@ -261,4 +345,20 @@ func GetClient(name string) *Client {
 	}
 	logx.GetLogger().Debug("call init before", Field("name", name))
 	return nil
+}
+
+// applyScheme 为地址列表添加 scheme 前缀
+func applyScheme(addrs []string, scheme string) []string {
+	if len(scheme) == 0 {
+		return addrs
+	}
+	result := make([]string, len(addrs))
+	for i, addr := range addrs {
+		if !strings.Contains(addr, "://") {
+			result[i] = fmt.Sprintf("%s://%s", scheme, addr)
+		} else {
+			result[i] = addr
+		}
+	}
+	return result
 }

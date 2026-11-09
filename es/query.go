@@ -3,7 +3,6 @@ package es
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"strings"
 
 	"github.com/olivere/elastic/v7"
@@ -23,7 +22,7 @@ type queryOption struct {
 	Highlight            *elastic.Highlight
 	Profile              bool
 	EnableDSL            bool
-	ExcludeFiles         []string
+	ExcludeFields        []string
 	IncludeFields        []string
 	SlowQueryMillisecond int64
 	Preference           string
@@ -58,9 +57,9 @@ func WithEnableDSL(enableDSL bool) QueryOption {
 	}
 }
 
-func WithExcludeFiles(excludeFiles []string) QueryOption {
+func WithExcludeFields(excludeFields []string) QueryOption {
 	return func(opt *queryOption) {
-		opt.ExcludeFiles = excludeFiles
+		opt.ExcludeFields = excludeFields
 	}
 }
 
@@ -131,8 +130,8 @@ func (c *Client) Query(ctx context.Context, indexName string, routings []string,
 	if len(queryOpt.IncludeFields) > 0 {
 		fetchSourceContext.Include(queryOpt.IncludeFields...)
 	}
-	if len(queryOpt.ExcludeFiles) > 0 {
-		fetchSourceContext.Exclude(queryOpt.ExcludeFiles...)
+	if len(queryOpt.ExcludeFields) > 0 {
+		fetchSourceContext.Exclude(queryOpt.ExcludeFields...)
 	}
 
 	// 构造查询条件
@@ -152,7 +151,7 @@ func (c *Client) Query(ctx context.Context, indexName string, routings []string,
 
 	searchSource.Profile(queryOpt.Profile)
 
-	searchService := c.Client.Search(indexName).SearchSource(searchSource).IgnoreUnavailable(true).Preference(DefaultPreference)
+	searchService := c.Client.Search(indexName).SearchSource(searchSource).IgnoreUnavailable(true)
 	if len(routings) > 0 {
 		searchService.Routing(routings...)
 	}
@@ -180,7 +179,7 @@ func (c *Client) Query(ctx context.Context, indexName string, routings []string,
 	return res, err
 }
 
-func (c *Client) ScrollQuery(ctx context.Context, index []string, typeStr string, query elastic.Query, size int, routings []string, callback func(res *elastic.SearchResult, err error), options ...QueryOption) {
+func (c *Client) ScrollQuery(ctx context.Context, index []string, query elastic.Query, size int, routings []string, callback func(res *elastic.SearchResult, err error), options ...QueryOption) {
 	queryOpt := &queryOption{}
 	for _, f := range options {
 		if f != nil {
@@ -232,9 +231,11 @@ func (c *Client) ScrollQuery(ctx context.Context, index []string, typeStr string
 
 	for {
 		res, err := scrollService.Do(ctx)
-		if err != io.EOF {
+		if err != nil {
+			c.log.Error("scroll query error", logx.Field("error", err))
 			break
 		}
+
 		if queryOpt.SlowQueryMillisecond > 0 && res != nil && res.TookInMillis >= queryOpt.SlowQueryMillisecond {
 			c.dslLog.Warn("slow query",
 				logx.Field("dsl", string(data)),
@@ -250,6 +251,7 @@ func (c *Client) ScrollQuery(ctx context.Context, index []string, typeStr string
 
 		if res.Hits == nil {
 			c.log.Warn("expected results.Hits != nil; got nil")
+			break
 		}
 
 		if len(res.Hits.Hits) == 0 {

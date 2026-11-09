@@ -27,7 +27,7 @@ type queryOption struct {
 	Profile              bool
 	EnableDSL            bool
 	FetchSource          *bool
-	ExcludeFiles         []string
+	ExcludeFields        []string
 	IncludeFields        []string
 	SlowQueryMillisecond int64
 	Preference           string
@@ -62,13 +62,13 @@ func WithEnableDSL(enableDSL bool) QueryOption {
 	}
 }
 
-func WithExcludeFiles(excludeFiles []string) QueryOption {
+func WithExcludeFields(excludeFields []string) QueryOption {
 	return func(opt *queryOption) {
-		opt.ExcludeFiles = excludeFiles
+		opt.ExcludeFields = excludeFields
 	}
 }
 
-func WithIncludeFileds(includeFields []string) QueryOption {
+func WithIncludeFields(includeFields []string) QueryOption {
 	return func(opt *queryOption) {
 		opt.IncludeFields = includeFields
 	}
@@ -131,6 +131,35 @@ func (c *Client) Mget(ctx context.Context, indexName, routing string, ids, exclu
 	return multiGetService.Do(ctx)
 }
 
+// MgetWithItems 支持每条文档使用不同的 routing
+// items 中的每个元素对应一个文档，可单独指定 Index/ID/Routing
+func (c *Client) MgetWithItems(ctx context.Context, indexName string, items []Mget, excludes []string) (*mget.Response, error) {
+	if len(items) == 0 {
+		return nil, errors.New("_doc is required")
+	}
+
+	// 构建 typedapi 的 MgetOperation 列表
+	docs := make([]types.MgetOperation, 0, len(items))
+	for _, item := range items {
+		op := types.MgetOperation{
+			Id_: item.ID,
+		}
+		if len(item.Index) > 0 {
+			op.Index_ = &item.Index
+		}
+		if len(item.Routing) > 0 {
+			op.Routing = &item.Routing
+		}
+		docs = append(docs, op)
+	}
+
+	multiGetService := c.Client.Mget().Index(indexName).Docs(docs...).Preference(DefaultPreference)
+	if len(excludes) > 0 {
+		multiGetService.SourceExcludes_(excludes...)
+	}
+	return multiGetService.Do(ctx)
+}
+
 func (c *Client) Query(ctx context.Context, indexName string, routing string, query *types.Query, from, size int, options ...QueryOption) (*search.Response, error) {
 	queryOpt := &queryOption{}
 	for _, f := range options {
@@ -164,10 +193,10 @@ func (c *Client) Query(ctx context.Context, indexName string, routing string, qu
 	}
 
 	if len(queryOpt.IncludeFields) > 0 {
-		searchService.SourceExcludes_(queryOpt.IncludeFields...)
+		searchService.SourceIncludes_(queryOpt.IncludeFields...)
 	}
-	if len(queryOpt.ExcludeFiles) > 0 {
-		searchService.SourceExcludes_(queryOpt.ExcludeFiles...)
+	if len(queryOpt.ExcludeFields) > 0 {
+		searchService.SourceExcludes_(queryOpt.ExcludeFields...)
 	}
 
 	if queryOpt.Highlight != nil {
@@ -252,6 +281,18 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 		}
 	}
 
+	t := time.Now()
+	defer func() {
+		if queryOpt.SlowQueryMillisecond > 0 && time.Since(t).Milliseconds() > queryOpt.SlowQueryMillisecond {
+			dslJSON := c.buildDSL(query, 0, size, queryOpt)
+			c.dslLog.Warn("es slow scroll query",
+				Field("dsl", dslJSON),
+				Field("routing", routing),
+				Field("took_ms", time.Since(t).Milliseconds()),
+			)
+		}
+	}()
+
 	searchService := c.Client.Search().Index(indexName).Query(query).AllowPartialSearchResults(true)
 	if len(routing) > 0 {
 		searchService.Routing(routing)
@@ -267,10 +308,10 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 	}
 
 	if len(queryOpt.IncludeFields) > 0 {
-		searchService.SourceExcludes_(queryOpt.IncludeFields...)
+		searchService.SourceIncludes_(queryOpt.IncludeFields...)
 	}
-	if len(queryOpt.ExcludeFiles) > 0 {
-		searchService.SourceExcludes_(queryOpt.ExcludeFiles...)
+	if len(queryOpt.ExcludeFields) > 0 {
+		searchService.SourceExcludes_(queryOpt.ExcludeFields...)
 	}
 
 	if queryOpt.Highlight != nil {
@@ -295,6 +336,13 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 			}
 		}
 	}
+
+	// DSL 日志输出
+	if c.DebugMode || c.QueryLogEnable || queryOpt.EnableDSL {
+		dslJSON := c.buildDSL(query, 0, size, queryOpt)
+		c.dslLog.Info("es scroll query", Field("dsl", dslJSON), Field("routing", routing))
+	}
+
 	res, err := searchService.Scroll("1m").Do(ctx)
 	scrollRes := &scroll.Response{
 		Aggregations:    res.Aggregations,
@@ -311,30 +359,29 @@ func (c *Client) ScrollQuery(ctx context.Context, indexName, routing string, que
 		Took:            res.Took,
 	}
 
-	callback(scrollRes, err)
 	if err != nil {
 		return err
 	}
+	callback(scrollRes, nil)
 
 	scrollID := *res.ScrollId_
 
 	// 使用 Scroll API 获取剩余结果
 	for {
 		result, err := c.Client.Scroll().Scroll("1m").ScrollId(scrollID).Do(ctx)
-		callback(result, err)
-		//执行上面的scroll后会返回一个新的scrollId，旧的scrollId需要清除掉
-
+		// 执行上面的scroll后会返回一个新的scrollId，旧的scrollId需要清除掉
 		if err != nil {
 			c.log.Error("cannot execute scroll query", ErrField(err))
 			return fmt.Errorf("scroll query failed: %w", err)
 		}
+		callback(result, nil)
 		if len(result.Hits.Hits) == 0 {
 			break
 		}
 
 		currentScrollId := *result.ScrollId_
 		//清除掉旧的scrollId
-		if currentScrollId != *result.ScrollId_ {
+		if currentScrollId != scrollID {
 			r, e := c.Client.ClearScroll().ScrollId(scrollID).Do(ctx)
 			if e != nil {
 				c.log.Error("clear scroll context failed", ErrField(e), Field("response", r))
