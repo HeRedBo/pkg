@@ -400,3 +400,13 @@ func (c *Client) DeleteIndexCache(indexName ...string) {
 func (c *Client) Close() error {
 	return c.BulkProcessor.Close()
 }
+
+// Logger 返回 Client 的业务日志接口，便于外部使用注入的 logger
+func (c *Client) Logger() logx.Logger {
+	return c.log
+}
+
+// DSLLogger 返回 Client 的 DSL 日志接口（用于区分业务日志和查询日志）
+func (c *Client) DSLLogger() logx.Logger {
+	return c.dslLog
+}

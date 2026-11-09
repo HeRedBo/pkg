@@ -190,6 +190,15 @@ func (c *Client) Update(ctx context.Context, indexName, id, routing string, upda
 	return err
 }
 
+func (c *Client) UpdateRefresh(ctx context.Context, indexName, id, routing string, update map[string]interface{}) error {
+	updateService := c.Client.Update().Index(indexName).Id(id).Refresh(RefreshTrue)
+	if len(routing) > 0 {
+		updateService.Routing(routing)
+	}
+	_, err := updateService.Doc(update).Do(ctx)
+	return err
+}
+
 func (c *Client) UpdateByQuery(ctx context.Context, indexName string, routings []string, query elastic.Query, script string, scriptParams map[string]interface{}) (*elastic.BulkIndexByScrollResponse, error) {
 	updateByQueryService := c.Client.UpdateByQuery(indexName).Query(query).Script(elastic.NewScript(script).
 		Params(scriptParams).Lang(DefaultScriptLang)).
@@ -198,6 +207,14 @@ func (c *Client) UpdateByQuery(ctx context.Context, indexName string, routings [
 		updateByQueryService.Routing(routings...)
 	}
 	return updateByQueryService.Do(ctx)
+}
+
+func (c *Client) BulkUpdate(indexName, id, routings string, update map[string]any) {
+	bulkUpdateRequest := elastic.NewBulkUpdateRequest().Index(indexName).Doc(update).Id(id)
+	if len(routings) > 0 {
+		bulkUpdateRequest.Routing(routings)
+	}
+	c.BulkProcessor.Add(bulkUpdateRequest)
 }
 
 func (c *Client) BulkUpdateDocs(ctx context.Context, index string, updates []*BulkUpdateDoc) (*elastic.BulkResponse, error) {
@@ -212,6 +229,7 @@ func (c *Client) BulkUpdateDocs(ctx context.Context, index string, updates []*Bu
 	return bulkService.Do(ctx)
 }
 
+// UpdateWithVersion 文档结构必须完整
 func (c *Client) UpdateWithVersion(ctx context.Context, indexName, id, routing string, doc interface{}, version int64) error {
 	indexService := c.Client.Index().OpType("index").Index(indexName).Id(id).Refresh(DefaultRefresh).
 		Version(version).VersionType(DefaultVersionType)
